@@ -1,0 +1,2 @@
+2026-02-24 16:11:17.819 +0545 [9038] FATAL:  lock file "postmaster.pid" already exists
+2026-02-24 16:11:17.819 +0545 [9038] HINT:  Is another postmaster (PID 8918) running in data directory "/usr/local/var/postgresql@14"?
