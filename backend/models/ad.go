@@ -59,12 +59,14 @@ type UpdateAdRequest struct {
 	IsPremium    *bool    `json:"is_premium,omitempty"`
 	ImageURLs    []string `json:"image_urls,omitempty"`
 }
+// In models/ad.go — replace AdFilter struct with this:
 
-// AdFilter for GET /ads query parameters
 type AdFilter struct {
-	Category string   `json:"category,omitempty"`
-	Location string   `json:"location,omitempty"`
-	Status   AdStatus `json:"status,omitempty"`
-	Page     int      `json:"page" default:"1"`
-	Limit    int      `json:"limit" default:"20"`
+	Category  string   `json:"category,omitempty"`
+	Location  string   `json:"location,omitempty"`
+	Status    AdStatus `json:"status,omitempty"`
+	IsPremium *bool    `json:"is_premium,omitempty"` // ← ADD THIS
+	Page      int      `json:"page" default:"1"`
+	Limit     int      `json:"limit" default:"20"`
+	SortNewest bool `json:"sort_newest,omitempty"`
 }

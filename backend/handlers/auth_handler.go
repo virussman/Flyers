@@ -164,3 +164,4 @@ func sendSMS(phone, code string) error {
 	log.Printf("SMS would be sent to %s with code %s", phone, code)
 	return nil
 }
+

@@ -116,6 +116,10 @@ func (h *AdHandler) ListAds(w http.ResponseWriter, r *http.Request) {
 	if limit, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && limit > 0 {
 		filter.Limit = limit
 	}
+	if premiumStr := r.URL.Query().Get("premium"); premiumStr == "true" {
+		isPremium := true
+		filter.IsPremium = &isPremium
+	}
 	ads, total, err := h.Repo.List(filter)
 	if err != nil {
 		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -249,4 +253,71 @@ func respondJSON(w http.ResponseWriter, status int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(payload)
+}
+
+// AdminEditAd — PATCH /admin/ads/:id/edit
+// Admin edits ad content only, status stays unchanged
+func (h *AdHandler) AdminEditAd(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPatch {
+		respondJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	// Extract ID from /admin/ads/123/edit
+	path := strings.TrimPrefix(r.URL.Path, "/admin/ads/")
+	path = strings.TrimSuffix(path, "/edit")
+	id, err := strconv.ParseInt(path, 10, 64)
+	if err != nil || id == 0 {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ad ID"})
+		return
+	}
+
+	var req models.UpdateAdRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid JSON"})
+		return
+	}
+
+	// Recalculate cost
+	wordCount := len(strings.Fields(req.Title + " " + req.Description))
+	totalCost := float64(wordCount) * 20
+	if totalCost < 200 {
+		totalCost = 200
+	}
+	
+	// ✅ FIXED: Use boolean directly, not assignment
+	if req.IsPremium != nil && *req.IsPremium {
+    totalCost *= 2
+}
+
+	if err := h.Repo.Update(id, req, totalCost, wordCount); err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "Ad updated successfully"})
+}
+
+// ADD THIS METHOD to handlers/ad_handler.go
+// Do not change anything else
+
+// GetLiveFeed — GET /ads/live
+// Returns the 4 most recently approved ads for the homepage live section
+func (h *AdHandler) GetLiveFeed(w http.ResponseWriter, r *http.Request) {
+	limit := 4
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 && l <= 20 {
+		limit = l
+	}
+
+	ads, err := h.Repo.GetLiveFeed(limit)
+	if err != nil {
+		respondJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if ads == nil {
+		ads = []models.Ad{}
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"data": ads,
+	})
 }

@@ -1,21 +1,55 @@
 package main
 
 import (
+	"bufio"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 
 	"flyers-backend/config"
 	"flyers-backend/routes"
 )
 
-// corsMiddleware adds CORS headers so the frontend (localhost:5173) can talk to the backend
+// loadEnv reads a .env file and sets environment variables
+func loadEnv(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return // .env is optional
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		if os.Getenv(key) == "" {
+			os.Setenv(key, val)
+		}
+	}
+}
+
+// corsMiddleware allows any localhost origin (covers 5173, 5174, 3000, etc.)
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")  // Added PATCH
+		origin := r.Header.Get("Origin")
+
+		// Allow any localhost origin regardless of port
+		if strings.HasPrefix(origin, "http://localhost:") {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
 
-		// Handle preflight requests — browser sends OPTIONS before the real request
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -26,16 +60,26 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
+	// Load .env file first (optional)
+	loadEnv(".env")
+
 	db, err := config.ConnectDB()
 	if err != nil {
 		log.Fatal("❌ Database connection failed:", err)
 	}
 	defer db.Close()
 
-	// DOUBLE-CHECK
+	// DOUBLE-CHECK database
 	var currentDB string
 	db.QueryRow("SELECT current_database()").Scan(&currentDB)
 	log.Printf("MAIN: Using database: %s", currentDB)
+
+	// ✅ ADD CLOUDINARY CHECK HERE — after DB, before routes
+	if os.Getenv("CLOUDINARY_CLOUD_NAME") != "" {
+		log.Println("✅ Cloudinary configured:", os.Getenv("CLOUDINARY_CLOUD_NAME"))
+	} else {
+		log.Println("⚠️  Cloudinary not configured — photo uploads will fail")
+	}
 
 	router := routes.RegisterRoutes(db)
 

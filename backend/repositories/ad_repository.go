@@ -100,6 +100,11 @@ func (r *AdRepository) List(filter models.AdFilter) ([]models.Ad, int, error) {
 	} else {
 		whereClause = append(whereClause, "status = 'approved'")
 	}
+	if filter.IsPremium != nil {
+		argCount++
+		whereClause = append(whereClause, fmt.Sprintf("is_premium = $%d", argCount))
+		args = append(args, *filter.IsPremium)
+	}
 
 	countQuery := "SELECT COUNT(*) FROM ads WHERE " + strings.Join(whereClause, " AND ")
 	var total int
@@ -397,4 +402,47 @@ func (r *AdRepository) GetStats() (map[string]interface{}, error) {
 	stats["total_revenue"] = totalRevenue
 
 	return stats, nil
+}
+
+// ADD THIS METHOD to repositories/ad_repository.go
+// Do not change anything else
+
+// GetLiveFeed returns the 4 most recently approved ads, purely by created_at DESC
+// No premium boost — ensures newest approved ad always appears first
+func (r *AdRepository) GetLiveFeed(limit int) ([]models.Ad, error) {
+	if limit <= 0 {
+    limit = 10  // was 4
+}
+
+	rows, err := r.DB.Query(`
+		SELECT id, COALESCE(user_id, 0), title, description, category, price, word_count, total_cost,
+			contact_phone, contact_email, location, status, is_premium, image_urls,
+			created_at, updated_at, expires_at
+		FROM ads
+		WHERE status = 'approved'
+		ORDER BY created_at DESC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ads := make([]models.Ad, 0)
+	for rows.Next() {
+		ad := models.Ad{}
+		var imageURLs []string
+		err := rows.Scan(
+			&ad.ID, &ad.UserID, &ad.Title, &ad.Description, &ad.Category, &ad.Price,
+			&ad.WordCount, &ad.TotalCost, &ad.ContactPhone, &ad.ContactEmail,
+			&ad.Location, &ad.Status, &ad.IsPremium, pq.Array(&imageURLs),
+			&ad.CreatedAt, &ad.UpdatedAt, &ad.ExpiresAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		ad.ImageURLs = imageURLs
+		ads = append(ads, ad)
+	}
+	return ads, nil
 }

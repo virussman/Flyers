@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { adsApi } from '@/api/client';
 import type { Ad } from '@/types';
 import AdCard from './AdCard';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Loader2, Search, AlertCircle, RefreshCw } from 'lucide-react';
+import { TOKEN, FONT } from '@/lib/constants';
 
 interface AdListProps {
   refresh?: number;
@@ -12,12 +10,12 @@ interface AdListProps {
 }
 
 export default function AdList({ refresh, initialCategory = 'all' }: AdListProps) {
-  const [ads, setAds]       = useState<Ad[]>([]);
+  const [ads, setAds]         = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
-  const [total, setTotal]   = useState(0);
+  const [error, setError]     = useState<string | null>(null);
+  const [total, setTotal]     = useState(0);
   const [location, setLocation] = useState('');
-  const [page, setPage]     = useState(1);
+  const [page, setPage]       = useState(1);
   const LIMIT = 12;
 
   const fetchAds = useCallback(async () => {
@@ -25,13 +23,10 @@ export default function AdList({ refresh, initialCategory = 'all' }: AdListProps
     setError(null);
     try {
       const params: Record<string, string | number> = {
-        page,
-        limit: LIMIT,
-        status: 'approved',
+        page, limit: LIMIT, status: 'approved',
       };
       if (initialCategory !== 'all') params.category = initialCategory;
       if (location.trim()) params.location = location.trim();
-
       const res = await adsApi.list(params);
       setAds(res.data.data || []);
       setTotal(res.data.total || 0);
@@ -42,115 +37,169 @@ export default function AdList({ refresh, initialCategory = 'all' }: AdListProps
     }
   }, [initialCategory, location, page, refresh]);
 
-  useEffect(() => {
-    fetchAds();
-  }, [fetchAds]);
-
-  // Reset page when location filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [location, initialCategory]);
+  useEffect(() => { fetchAds(); }, [fetchAds]);
+  useEffect(() => { setPage(1); }, [location, initialCategory]);
 
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {/* Location filter */}
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-stone-400" />
-        <Input
-          placeholder="Filter by location…"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-          className="pl-8 border-stone-200 text-sm focus-visible:ring-1 focus-visible:ring-stone-400 bg-white"
-        />
+      {/* ── Filter bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        {/* Location search */}
+        <div style={{ position: 'relative', maxWidth: 240 }}>
+          <svg
+            width="12" height="12" viewBox="0 0 24 24" fill="none"
+            stroke={TOKEN.ink5} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+          >
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            value={location}
+            onChange={e => setLocation(e.target.value)}
+            placeholder="Filter by location…"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              paddingLeft: 30, paddingRight: 12, paddingTop: 7, paddingBottom: 7,
+              border: `1px solid ${TOKEN.border}`,
+              fontFamily: FONT.sans, fontSize: 12, color: TOKEN.ink,
+              background: TOKEN.white, outline: 'none',
+              transition: 'border-color .15s',
+            }}
+            onFocus={e => (e.currentTarget.style.borderColor = TOKEN.ink)}
+            onBlur={e => (e.currentTarget.style.borderColor = TOKEN.border)}
+          />
+        </div>
+
+        {/* Stats + refresh */}
+        {!loading && !error && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ fontFamily: FONT.mono, fontSize: 9, color: TOKEN.ink5, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              {total} listing{total !== 1 ? 's' : ''}{location ? ` in "${location}"` : ''}
+            </span>
+            <button
+              onClick={fetchAds}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase',
+                color: TOKEN.ink5, background: 'none', border: 'none', cursor: 'pointer',
+                transition: 'color .15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = TOKEN.ink)}
+              onMouseLeave={e => (e.currentTarget.style.color = TOKEN.ink5)}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+              Refresh
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Stats bar */}
-      {!loading && !error && (
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-stone-400 font-mono uppercase tracking-wider">
-            {total} listing{total !== 1 ? 's' : ''} found
-            {location && <span className="ml-1">in "{location}"</span>}
-          </p>
+      {/* ── Loading ── */}
+      {loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: 12 }}>
+          <style>{`
+            @keyframes adlist-spin { to { transform: rotate(360deg); } }
+          `}</style>
+          <div style={{
+            width: 20, height: 20, borderRadius: '50%',
+            border: `2px solid ${TOKEN.border}`,
+            borderTopColor: TOKEN.ink,
+            animation: 'adlist-spin .7s linear infinite',
+          }} />
+          <span style={{ fontFamily: FONT.mono, fontSize: 9, color: TOKEN.ink5, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Loading
+          </span>
+        </div>
+      )}
+
+      {/* ── Error ── */}
+      {error && !loading && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', gap: 10, textAlign: 'center' }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={TOKEN.border2} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <p style={{ fontFamily: FONT.sans, fontSize: 13, color: TOKEN.ink4 }}>{error}</p>
           <button
             onClick={fetchAds}
-            className="text-xs text-stone-400 hover:text-stone-600 flex items-center gap-1 transition-colors"
+            style={{
+              padding: '7px 18px', border: `1px solid ${TOKEN.border}`,
+              background: TOKEN.white, fontFamily: FONT.mono, fontSize: 9,
+              letterSpacing: '0.1em', textTransform: 'uppercase', color: TOKEN.ink4,
+              cursor: 'pointer', transition: 'background .15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = TOKEN.bg)}
+            onMouseLeave={e => (e.currentTarget.style.background = TOKEN.white)}
           >
-            <RefreshCw className="h-3 w-3" />
-            Refresh
+            Try Again
           </button>
         </div>
       )}
 
-      {/* Loading */}
-      {loading && (
-        <div className="flex items-center justify-center py-20">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-stone-300" />
-            <p className="text-xs text-stone-400 font-mono tracking-wider uppercase">Loading</p>
+      {/* ── Empty ── */}
+      {!loading && !error && ads.length === 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '72px 0', gap: 8, textAlign: 'center' }}>
+          <div style={{ fontFamily: FONT.serif, fontSize: 56, color: TOKEN.border, lineHeight: 1 }}>—</div>
+          <div style={{ fontFamily: FONT.serif, fontSize: 17, color: TOKEN.ink4, marginTop: 8 }}>No listings found</div>
+          <div style={{ fontFamily: FONT.mono, fontSize: 9, color: TOKEN.ink5, letterSpacing: '0.1em', textTransform: 'uppercase', marginTop: 2 }}>
+            {initialCategory !== 'all' || location ? 'Try adjusting your filters' : 'Be the first to post an ad'}
           </div>
         </div>
       )}
 
-      {/* Error */}
-      {error && !loading && (
-        <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
-          <AlertCircle className="h-8 w-8 text-stone-300" />
-          <p className="text-sm text-stone-500">{error}</p>
-          <Button variant="outline" size="sm" onClick={fetchAds} className="border-stone-200">
-            Try Again
-          </Button>
-        </div>
-      )}
-
-      {/* Empty */}
-      {!loading && !error && ads.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
-          <div className="font-serif text-6xl text-stone-200 leading-none">—</div>
-          <p className="font-serif text-stone-500 text-lg">No listings found</p>
-          <p className="text-xs text-stone-400">
-            {initialCategory !== 'all' || location
-              ? 'Try adjusting your filters'
-              : 'Be the first to post an ad in this section'}
-          </p>
-        </div>
-      )}
-
-      {/* Grid */}
+      {/* ── Grid ── */}
       {!loading && !error && ads.length > 0 && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {ads.map((ad) => (
-              <AdCard key={ad.id} ad={ad} />
-            ))}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            {ads.map(ad => <AdCard key={ad.id} ad={ad} />)}
           </div>
 
-          {/* Pagination */}
+          {/* ── Pagination ── */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-6 border-t border-stone-100">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              paddingTop: 24, borderTop: `1px solid ${TOKEN.border}`,
+            }}>
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="border-stone-200 text-stone-600 hover:bg-stone-50"
+                style={{
+                  padding: '7px 16px', border: `1px solid ${TOKEN.border}`,
+                  background: TOKEN.white, fontFamily: FONT.mono, fontSize: 9,
+                  letterSpacing: '0.1em', textTransform: 'uppercase', color: TOKEN.ink4,
+                  cursor: page === 1 ? 'not-allowed' : 'pointer',
+                  opacity: page === 1 ? 0.4 : 1, transition: 'background .15s',
+                }}
+                onMouseEnter={e => { if (page !== 1) (e.currentTarget.style.background = TOKEN.bg); }}
+                onMouseLeave={e => (e.currentTarget.style.background = TOKEN.white)}
               >
                 ← Prev
-              </Button>
-              <span className="text-xs text-stone-400 font-mono px-4">
+              </button>
+
+              <span style={{ fontFamily: FONT.mono, fontSize: 9, color: TOKEN.ink5, letterSpacing: '0.1em', padding: '0 12px' }}>
                 {page} / {totalPages}
               </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="border-stone-200 text-stone-600 hover:bg-stone-50"
+                style={{
+                  padding: '7px 16px', border: `1px solid ${TOKEN.border}`,
+                  background: TOKEN.white, fontFamily: FONT.mono, fontSize: 9,
+                  letterSpacing: '0.1em', textTransform: 'uppercase', color: TOKEN.ink4,
+                  cursor: page === totalPages ? 'not-allowed' : 'pointer',
+                  opacity: page === totalPages ? 0.4 : 1, transition: 'background .15s',
+                }}
+                onMouseEnter={e => { if (page !== totalPages) (e.currentTarget.style.background = TOKEN.bg); }}
+                onMouseLeave={e => (e.currentTarget.style.background = TOKEN.white)}
               >
                 Next →
-              </Button>
+              </button>
             </div>
           )}
         </>

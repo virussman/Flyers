@@ -18,7 +18,7 @@ export interface Province {
   districts: District[];
 }
 
-const nepal: Province[] = [
+export const nepal: Province[] = [
   {
     id: 1,
     name: "Koshi Province",
