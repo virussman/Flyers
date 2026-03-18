@@ -4,46 +4,48 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
+	"time"
 
 	_ "github.com/lib/pq"
 )
 
 func ConnectDB() (*sql.DB, error) {
-	// Connection parameters
-	const (
-		host     = "localhost"
-		port     = 5432
-		user     = "apple"
-		password = ""
-		dbname   = "flyers_db"
-	)
+	host     := os.Getenv("DB_HOST")
+	port     := os.Getenv("DB_PORT")
+	user     := os.Getenv("DB_USER")
+	password := os.Getenv("DB_PASSWORD")
+	dbname   := os.Getenv("DB_NAME")
 
-	// Use explicit URL format to force correct database
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
 		user, password, host, port, dbname)
 
-	log.Printf("DEBUG: Connection string: %s", connStr)
+	log.Printf("DEBUG: Connecting to: %s", connStr)
 
-	db, err := sql.Open("postgres", connStr)
+	var db *sql.DB
+	var err error
+
+	for i := 1; i <= 10; i++ {
+		db, err = sql.Open("postgres", connStr)
+		if err == nil {
+			err = db.Ping()
+		}
+		if err == nil {
+			break
+		}
+		log.Printf("Database connection failed (attempt %d/10): %v", i, err)
+		time.Sleep(3 * time.Second)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	if err = db.Ping(); err != nil {
-		return nil, err
-	}
-
-	// Verify correct database
 	var currentDB string
 	if err := db.QueryRow("SELECT current_database()").Scan(&currentDB); err != nil {
 		return nil, err
 	}
 	log.Printf("DEBUG: Actually connected to: %s", currentDB)
-
-	if currentDB != dbname {
-		log.Fatalf("❌ WRONG DATABASE! Expected %s, got %s", dbname, currentDB)
-	}
-
 	log.Println("✅ Connected to PostgreSQL")
 	return db, nil
 }

@@ -1,18 +1,17 @@
 // ================================================================
 // FILE: src/pages/HomePage.tsx
-// Home page — three-col section (Sponsors | Lost & Found | Live)
-//           + FeaturedBelt + Latest Listings + Browse + Advertise CTA + Notices
+// Home page — three-col section (Banner | Premium Notices | Live)
+//           + FeaturedBelt + Latest Listings + Advertise CTA + Lost & Found
 // ================================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate }   from 'react-router-dom';
 import AdList            from '@/components/AdList';
 import { NoticeCard }    from '@/components/NoticeCards';
-import NoticeForm        from '@/components/NoticeForm';
 import FeaturedBelt      from '@/components/FeaturedBelt';
 import LoginModal        from '@/components/LoginModal';
 import AdForm            from '@/components/AdForm';
-import LostFoundModal    from '@/components/LostFoundModal';   // ← NEW
+import LostFoundModal    from '@/components/LostFoundModal';
 import { useAuth }       from '@/context/AuthContext';
 import {
   TOKEN, FONT, API,
@@ -35,19 +34,6 @@ interface LiveFeedItem {
   time:    string;
 }
 
-interface Sponsor {
-  id:            string;
-  name:          string;
-  category:      string;
-  location:      string;
-  website_url?:  string;
-  logo_url?:     string;
-  tier:          'Gold' | 'Featured';
-  tagline?:      string;
-  offer_text?:   string;
-  offer_badge?:  string;
-}
-
 interface LostFoundItem {
   id:          string;
   type:        'lost' | 'found';
@@ -57,6 +43,21 @@ interface LostFoundItem {
   location:    string;
   photo_url?:  string;
   created_at:  string;
+}
+
+interface SponsorRecord {
+  id:            number;
+  name:          string;
+  category:      string;
+  location:      string;
+  website_url?:  string;
+  logo_url?:     string;
+  tier:          'Gold' | 'Featured';
+  status:        'active' | 'inactive';
+  display_order: number;
+  tagline?:      string;
+  offer_text?:   string;
+  offer_badge?:  string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -82,12 +83,6 @@ function mapAdToFeedItem(ad: Record<string, unknown>): LiveFeedItem {
     premium: Boolean(ad.is_premium),
     time:    timeAgo(String(ad.created_at ?? '')),
   };
-}
-
-function toInitials(name: string): string {
-  const words = name.trim().split(/\s+/);
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
 }
 
 const POLL_INTERVAL = 8_000;
@@ -157,611 +152,549 @@ function ColHeader({
   );
 }
 
-// ── Col 1: Sponsors ───────────────────────────────────────────────
-function SponsorsCol({
-  sponsors, loading, onAdvertise,
+// ── Tints for sponsor initials ───────────────────────────────────
+const SP_TINTS = [
+  { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
+  { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0' },
+  { bg: '#FFFBEB', color: '#B45309', border: '#FDE68A' },
+  { bg: '#FDF4FF', color: '#7E22CE', border: '#E9D5FF' },
+  { bg: '#FFF1F2', color: '#BE123C', border: '#FECDD3' },
+  { bg: '#ECFEFF', color: '#0E7490', border: '#A5F3FC' },
+];
+function spInitials(name: string) {
+  const w = name.trim().split(/\s+/);
+  return w.length === 1 ? w[0].slice(0, 2).toUpperCase() : (w[0][0] + w[1][0]).toUpperCase();
+}
+
+// Badge colour map for offer_badge keywords
+const BADGE_COLORS: Record<string, { bg: string; text: string }> = {
+  HOT:     { bg: '#7f1d1d', text: '#fca5a5' },
+  SALE:    { bg: '#14532d', text: '#86efac' },
+  NEW:     { bg: '#1e1b4b', text: '#c7d2fe' },
+  LIMITED: { bg: '#713f12', text: '#fde68a' },
+};
+function badgeColor(badge: string) {
+  return BADGE_COLORS[badge.toUpperCase()] ?? { bg: '#1a1a1a', text: '#e5e7eb' };
+}
+
+// ── Col 1: Sponsors — top banner 50% + bottom HOT/SALE 50% ───────
+function SponsorCol({
+  sponsors,
+  loading,
 }: {
-  sponsors: Sponsor[];
+  sponsors: SponsorRecord[];
   loading: boolean;
-  onAdvertise: () => void;
 }) {
-  const TINTS = [
-    { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
-    { bg: '#F0FDF4', color: '#15803D', border: '#BBF7D0' },
-    { bg: '#FFFBEB', color: '#B45309', border: '#FDE68A' },
-    { bg: '#FDF4FF', color: '#7E22CE', border: '#E9D5FF' },
-    { bg: '#FFF1F2', color: '#BE123C', border: '#FECDD3' },
-    { bg: '#ECFEFF', color: '#0E7490', border: '#A5F3FC' },
-  ];
+  const [bannerIdx, setBannerIdx] = useState(0);
+  const [bannerFade, setBannerFade] = useState(false);
+  const bannerTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Badge accent colours — cycles per sponsor index
-  const BADGE_ACCENTS = [
-    { bg: '#7f1d1d', text: '#fca5a5' }, // deep red
-    { bg: '#14532d', text: '#86efac' }, // deep green
-    { bg: '#713f12', text: '#fde68a' }, // deep amber
-    { bg: '#1e1b4b', text: '#c7d2fe' }, // deep indigo
-    { bg: '#4a044e', text: '#f5d0fe' }, // deep purple
-  ];
+  const [tileIdx, setTileIdx] = useState(0);
+  const [tileFade, setTileFade] = useState(false);
+  const tileTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const visible = sponsors.slice(0, 5);
+  const hotSponsors = sponsors.filter(s => s.offer_badge?.trim());
+  const bn = sponsors.length;
+  const hn = hotSponsors.length;
+
+  const startBannerTimer = (count: number) => {
+    if (bannerTimer.current) clearInterval(bannerTimer.current);
+    if (count < 2) return;
+    bannerTimer.current = setInterval(() => {
+      setBannerFade(true);
+      setTimeout(() => { setBannerIdx(c => { setBannerFade(false); return (c + 1) % count; }); }, 200);
+    }, 4000);
+  };
+  useEffect(() => {
+    startBannerTimer(bn);
+    return () => { if (bannerTimer.current) clearInterval(bannerTimer.current); };
+  }, [bn]);
+
+  const startTileTimer = (count: number) => {
+    if (tileTimer.current) clearInterval(tileTimer.current);
+    if (count < 2) return;
+    tileTimer.current = setInterval(() => {
+      setTileFade(true);
+      setTimeout(() => { setTileIdx(c => { setTileFade(false); return (c + 1) % count; }); }, 180);
+    }, 3500);
+  };
+  useEffect(() => {
+    startTileTimer(hn);
+    return () => { if (tileTimer.current) clearInterval(tileTimer.current); };
+  }, [hn]);
+
+  const goBanner = (next: number) => {
+    const idx = ((next % (bn || 1)) + (bn || 1)) % (bn || 1);
+    setBannerFade(true);
+    setTimeout(() => { setBannerIdx(idx); setBannerFade(false); }, 200);
+    startBannerTimer(bn);
+  };
+
+  const goTile = (next: number) => {
+    const idx = ((next % (hn || 1)) + (hn || 1)) % (hn || 1);
+    setTileFade(true);
+    setTimeout(() => { setTileIdx(idx); setTileFade(false); }, 180);
+    startTileTimer(hn);
+  };
+
+  const banner = sponsors[bannerIdx] ?? null;
+  const tile   = hotSponsors[tileIdx] ?? null;
+  const tint   = SP_TINTS[bannerIdx % SP_TINTS.length];
+  const bc     = tile ? badgeColor(tile.offer_badge ?? '') : { bg: '#1a1a1a', text: '#e5e7eb' };
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      background: TOKEN.white,
-      borderRight: `1px solid ${TOKEN.border}`,
-      height: '100%', overflow: 'hidden',
-    }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', borderRight: `1px solid ${TOKEN.border}` }}>
       <style>{`
-        @keyframes sp-flash { 0%,100%{opacity:1} 50%{opacity:.6} }
-        .sp-offer-badge { animation: sp-flash 2.4s ease infinite; }
-        .sp-row-link:hover .sp-offer-strip { opacity: 1 !important; }
-        .sp-row-link:hover { background: ${TOKEN.bg} !important; }
-        .sp-row-plain:hover { background: ${TOKEN.bg} !important; }
+        @keyframes sp-prog    { from{transform:scaleX(0)} to{transform:scaleX(1)} }
+        @keyframes sp-drift   { 0%{transform:scale(1.05) translate(0px,0px)} 33%{transform:scale(1.08) translate(-6px,-3px)} 66%{transform:scale(1.06) translate(4px,-5px)} 100%{transform:scale(1.05) translate(0px,0px)} }
+        @keyframes sp-bpulse  { 0%,100%{opacity:1} 50%{opacity:.45} }
+        @keyframes sp-tile-in { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+        .sp-banner-img  { animation: sp-drift 14s ease-in-out infinite; }
+        .sp-nav-btn:hover { background: rgba(0,0,0,0.42) !important; }
+        .sp-tile-row:hover { background: ${TOKEN.bg} !important; }
       `}</style>
 
-      <ColHeader
-        eyebrow="Promoted · Partners"
-        title="Sponsors"
-        action={<GhostBtn label="Advertise →" onClick={onAdvertise} />}
-      />
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-
-        {/* ── Loading skeleton ── */}
-        {loading && Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ flex: 1, padding: '0 16px', borderBottom: `1px solid ${TOKEN.border}`, display: 'flex', alignItems: 'center', gap: 11 }}>
-            <div style={{ width: 36, height: 36, background: TOKEN.bg3, flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ height: 10, width: '52%', background: TOKEN.bg3, marginBottom: 7 }} />
-              <div style={{ height: 7, width: '70%', background: TOKEN.border }} />
-            </div>
+      {/* ── Column header ── */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12,
+        padding: '18px 24px 14px',
+        background: TOKEN.white,
+        borderBottom: `2.5px solid ${TOKEN.ink}`,
+        flexShrink: 0,
+      }}>
+        <div>
+          <div style={{
+            fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase',
+            color: TOKEN.ink5, marginBottom: 5,
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ width: 18, height: 1, background: TOKEN.gold2, opacity: 0.5, display: 'inline-block', flexShrink: 0 }} />
+            Promoted · Partners
           </div>
-        ))}
+          <div style={{ fontFamily: FONT.serif, fontWeight: 700, fontSize: 22, color: TOKEN.ink, lineHeight: 1 }}>
+            Sponsors
+          </div>
+        </div>
+        {bn > 1 && (
+          <span style={{ fontFamily: FONT.mono, fontSize: 8, color: TOKEN.ink5, flexShrink: 0 }}>
+            {bannerIdx + 1} / {bn}
+          </span>
+        )}
+      </div>
 
-        {/* ── Empty ── */}
-        {!loading && visible.length === 0 && (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <div style={{ fontFamily: FONT.mono, fontSize: 8, color: TOKEN.ink5, letterSpacing: '0.12em', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.8 }}>
-              No sponsors yet.<br />Be the first to advertise.
-            </div>
+      {/* ══ TOP 50% — Sponsor banner ══ */}
+      <div style={{ flex: '0 0 calc(50% - 57px)', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+
+        {loading && (
+          <div style={{ position: 'absolute', inset: 0, background: TOKEN.bg3, animation: 'flyers-skeleton 1.4s ease infinite' }} />
+        )}
+
+        {!loading && (
+          <div style={{ position: 'absolute', inset: 0, transition: 'opacity .2s ease', opacity: bannerFade ? 0 : 1 }}>
+            {banner?.logo_url ? (
+              <img
+                key={`sb-${bannerIdx}`}
+                src={banner.logo_url}
+                alt={banner.name}
+                className="sp-banner-img"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              />
+            ) : banner ? (
+              <div style={{
+                width: '100%', height: '100%',
+                background: `linear-gradient(135deg, ${tint.bg} 0%, ${TOKEN.bg2} 100%)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <span style={{ fontFamily: FONT.serif, fontWeight: 900, fontSize: 72, color: tint.color, opacity: 0.14, userSelect: 'none' }}>
+                  {spInitials(banner.name)}
+                </span>
+              </div>
+            ) : (
+              <div style={{ width: '100%', height: '100%', background: TOKEN.bg3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={TOKEN.border2} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                </svg>
+                <span style={{ fontFamily: FONT.mono, fontSize: 7.5, color: TOKEN.ink5, letterSpacing: '0.14em', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.9 }}>No sponsors yet</span>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── Sponsor rows ── */}
-        {!loading && visible.map((s, idx) => {
-          const tint      = TINTS[idx % TINTS.length];
-          const badge_acc = BADGE_ACCENTS[idx % BADGE_ACCENTS.length];
-          const hasWeb    = !!s.website_url?.trim();
-          const hasOffer  = !!(s.offer_text?.trim() || s.tagline?.trim());
-          const hasBadge  = !!s.offer_badge?.trim();
-
-          const rowContent = (
-            <>
-              {/* ── Logo / initials ── */}
-              <div style={{ flexShrink: 0, position: 'relative' }}>
-                {s.logo_url ? (
-                  <img src={s.logo_url} alt={s.name}
-                    style={{ width: 40, height: 40, objectFit: 'cover', display: 'block', border: `1px solid ${TOKEN.border}` }} />
-                ) : (
-                  <div style={{
-                    width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: tint.bg, color: tint.color, border: `1px solid ${tint.border}`,
-                    fontFamily: FONT.serif, fontWeight: 900, fontSize: 14,
-                  }}>
-                    {toInitials(s.name)}
-                  </div>
-                )}
-                {/* Flash sale badge on logo corner */}
-                {hasBadge && (
-                  <span
-                    className="sp-offer-badge"
-                    style={{
-                      position: 'absolute', top: -6, right: -6,
-                      background: badge_acc.bg, color: badge_acc.text,
-                      fontFamily: FONT.mono, fontSize: 6, fontWeight: 700,
-                      letterSpacing: '0.08em', textTransform: 'uppercase',
-                      padding: '2px 5px', whiteSpace: 'nowrap',
-                      lineHeight: 1.4,
-                    }}>
-                    {s.offer_badge}
-                  </span>
-                )}
-              </div>
-
-              {/* ── Text ── */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Name + tier */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: hasOffer ? 3 : 0 }}>
-                  <span style={{
-                    fontFamily: FONT.sans, fontSize: 12.5, fontWeight: 700,
-                    color: TOKEN.ink, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>
-                    {s.name}
-                  </span>
-                  {hasWeb && <span style={{ fontSize: 8, color: TOKEN.ink5, fontFamily: FONT.mono, flexShrink: 0 }}>↗</span>}
-                  <span style={{
-                    fontFamily: FONT.mono, fontSize: 6.5, letterSpacing: '0.1em', textTransform: 'uppercase',
-                    padding: '2px 6px', flexShrink: 0, border: '1px solid', marginLeft: 'auto',
-                    ...(s.tier === 'Gold'
-                      ? { background: '#FEF9C3', color: '#92400E', borderColor: '#FCD34D' }
-                      : { background: TOKEN.goldx, color: TOKEN.gold, borderColor: 'rgba(180,135,40,.35)' }),
-                  }}>
-                    {s.tier}
-                  </span>
-                </div>
-
-                {/* Tagline — always visible if set */}
-                {s.tagline?.trim() && (
-                  <div style={{
-                    fontFamily: FONT.mono, fontSize: 8.5, color: TOKEN.ink4,
-                    letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    marginBottom: s.offer_text?.trim() ? 4 : 0,
-                  }}>
-                    {s.tagline}
-                  </div>
-                )}
-
-                {/* Offer strip — highlighted */}
-                {s.offer_text?.trim() && (
-                  <div
-                    className="sp-offer-strip"
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 5,
-                      padding: '3px 7px',
-                      background: TOKEN.goldx,
-                      border: `1px solid rgba(180,135,40,.25)`,
-                      opacity: 0.9, transition: 'opacity .15s',
-                    }}
-                  >
-                    <span style={{ fontSize: 8, flexShrink: 0 }}>✦</span>
-                    <span style={{
-                      fontFamily: FONT.mono, fontSize: 8, fontWeight: 700,
-                      color: TOKEN.gold2, letterSpacing: '0.04em',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {s.offer_text}
-                    </span>
-                  </div>
-                )}
-
-                {/* Fallback — category + location when no offer */}
-                {!hasOffer && (
-                  <div style={{
-                    fontFamily: FONT.mono, fontSize: 8.5, color: TOKEN.ink5,
-                    letterSpacing: '0.03em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  }}>
-                    {s.category}{s.location ? ` · ${s.location}` : ''}
-                  </div>
-                )}
-              </div>
-            </>
-          );
-
-          const baseStyle: React.CSSProperties = {
-            flex: 1, display: 'flex', alignItems: 'center', gap: 11,
-            padding: '0 14px', borderBottom: `1px solid ${TOKEN.border}`,
-            minHeight: 0, transition: 'background .12s',
-          };
-
-          return hasWeb ? (
-            <a
-              key={s.id}
-              href={s.website_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="sp-row-link"
-              style={{ ...baseStyle, textDecoration: 'none', cursor: 'pointer', background: 'transparent' }}
-            >
-              {rowContent}
-            </a>
-          ) : (
-            <div key={s.id} className="sp-row-plain" style={{ ...baseStyle, background: 'transparent' }}>
-              {rowContent}
+        {/* Bottom scrim + info overlay */}
+        {!loading && banner && (
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.28) 60%, transparent 100%)',
+            padding: '36px 14px 10px',
+            pointerEvents: 'none',
+          }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginBottom: 4, padding: '2px 7px', fontFamily: FONT.mono, fontSize: 6.5, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', ...(banner.tier === 'Gold' ? { background: 'rgba(254,243,195,0.9)', color: '#92400e' } : { background: 'rgba(180,135,40,0.22)', color: TOKEN.gold2, border: '1px solid rgba(180,135,40,.4)' }) }}>
+              {banner.tier}
             </div>
-          );
-        })}
+            <div style={{ fontFamily: FONT.serif, fontSize: 17, fontWeight: 800, color: '#fff', lineHeight: 1.15, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {banner.name}
+            </div>
+            {banner.tagline?.trim() && (
+              <div style={{ fontFamily: FONT.mono, fontSize: 8.5, color: 'rgba(255,255,255,0.6)', letterSpacing: '0.03em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {banner.tagline}
+              </div>
+            )}
+            {banner.website_url?.trim() && (
+              <a
+                href={banner.website_url} target="_blank" rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4, fontFamily: FONT.mono, fontSize: 8, color: TOKEN.gold2, textDecoration: 'none', pointerEvents: 'auto' }}
+                onClick={e => e.stopPropagation()}
+              >
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                {banner.website_url.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Progress bar */}
+        {bn > 1 && (
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, display: 'flex', gap: 1, zIndex: 5 }}>
+            {sponsors.map((_, i) => (
+              <div key={i} onClick={() => goBanner(i)} style={{ flex: 1, height: 2, background: 'rgba(255,255,255,0.18)', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
+                {i === bannerIdx && <div style={{ position: 'absolute', inset: 0, background: TOKEN.gold2, transformOrigin: 'left', animation: 'sp-prog 4s linear both' }} />}
+                {i < bannerIdx  && <div style={{ position: 'absolute', inset: 0, background: TOKEN.gold2, opacity: 0.5 }} />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Counter + prev/next */}
+        {bn > 1 && !loading && (
+          <>
+            <button className="sp-nav-btn" onClick={() => goBanner(bannerIdx - 1)} style={{ position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', width: 24, height: 24, borderRadius: '50%', zIndex: 5, border: '1px solid rgba(255,255,255,.28)', background: 'rgba(0,0,0,.22)', color: '#fff', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s' }}>‹</button>
+            <button className="sp-nav-btn" onClick={() => goBanner(bannerIdx + 1)} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 24, height: 24, borderRadius: '50%', zIndex: 5, border: '1px solid rgba(255,255,255,.28)', background: 'rgba(0,0,0,.22)', color: '#fff', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background .15s' }}>›</button>
+          </>
+        )}
       </div>
 
-      {/* ── Advertise CTA ── */}
-      <style>{`
-        @keyframes sp-blink {
-          0%, 49% { opacity: 1; }
-          50%, 100% { opacity: 0; }
-        }
-        @keyframes sp-glow {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(180,135,40,0); }
-          50% { box-shadow: 0 0 12px 2px rgba(180,135,40,0.18); }
-        }
-        .sp-cta-btn { transition: background .15s; }
-        .sp-cta-btn:hover { background: ${TOKEN.ink} !important; }
-        .sp-cta-btn:hover .sp-cta-text { color: ${TOKEN.white} !important; }
-        .sp-cta-btn:hover .sp-cta-arrow { color: ${TOKEN.gold2} !important; opacity: 1 !important; }
-        .sp-cta-btn:hover .sp-bulb { background: ${TOKEN.gold2} !important; animation: none !important; }
-        .sp-cta-btn:hover .sp-bulb-label { color: ${TOKEN.gold2} !important; }
-      `}</style>
-      <div
-        className="sp-cta-btn"
-        onClick={onAdvertise}
-        style={{
-          flexShrink: 0,
-          height: 56,
-          display: 'flex', alignItems: 'center',
-          padding: '0 16px',
-          background: TOKEN.ink,
-          borderTop: `3px solid ${TOKEN.gold2}`,
-          cursor: 'pointer', gap: 12,
-          animation: 'sp-glow 2.8s ease infinite',
-        }}
-      >
-        {/* Blinking bulb */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-          <div
-            className="sp-bulb"
-            style={{
-              width: 10, height: 10, borderRadius: '50%',
-              background: TOKEN.gold2,
-              animation: 'sp-blink 1.1s step-start infinite',
-            }}
-          />
-          <div
-            className="sp-bulb-label"
-            style={{
-              fontFamily: FONT.mono, fontSize: 5.5, letterSpacing: '0.14em',
-              textTransform: 'uppercase', color: TOKEN.gold2,
-              animation: 'sp-blink 1.1s step-start infinite',
-            }}
-          >ad</div>
+      {/* ══ BOTTOM 50% — HOT & SALE tiles (warm light design) ══ */}
+      <div style={{ flex: '0 0 50%', display: 'flex', flexDirection: 'column', background: TOKEN.bg2, borderTop: `2px solid ${TOKEN.border}`, overflow: 'hidden', minHeight: 0 }}>
+
+        {/* Section header — same style as rest of site */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 16px 6px', flexShrink: 0, borderBottom: `1px solid ${TOKEN.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22C55E', display: 'inline-block', animation: 'sp-bpulse 1.4s step-start infinite' }} />
+            <span style={{ fontFamily: FONT.mono, fontSize: 7.5, letterSpacing: '0.16em', textTransform: 'uppercase', color: TOKEN.gold2, fontWeight: 700 }}>Hot Deals &amp; Offers</span>
+          </div>
+          {hn > 1 && <span style={{ fontFamily: FONT.mono, fontSize: 7.5, color: TOKEN.ink5 }}>{tileIdx + 1} / {hn}</span>}
         </div>
 
-        {/* Text */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            className="sp-cta-text"
-            style={{
-              fontFamily: FONT.mono, fontSize: 8, letterSpacing: '0.13em',
-              textTransform: 'uppercase', color: 'rgba(255,255,255,0.9)',
-              fontWeight: 700, lineHeight: 1.5,
-            }}
-          >
-            Promote your business
-          </div>
-          <div style={{
-            fontFamily: FONT.mono, fontSize: 7, letterSpacing: '0.06em',
-            color: 'rgba(255,255,255,0.35)', marginTop: 1,
-          }}>
-            77 districts · reach Nepal
-          </div>
-        </div>
+        {/* Tiles */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
 
-        {/* Arrow */}
-        <span
-          className="sp-cta-arrow"
-          style={{ fontFamily: FONT.mono, fontSize: 16, color: TOKEN.gold2, opacity: 0.7, flexShrink: 0 }}
-        >→</span>
+          {loading && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 1, padding: '8px 12px' }}>
+              {[0,1,2].map(i => <div key={i} style={{ flex: 1, background: TOKEN.border, animation: 'flyers-skeleton 1.4s ease infinite', opacity: 0.4 - i * 0.1 }} />)}
+            </div>
+          )}
+
+          {!loading && hn === 0 && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+              <span style={{ fontFamily: FONT.mono, fontSize: 7.5, color: TOKEN.ink5, letterSpacing: '0.14em', textTransform: 'uppercase', textAlign: 'center', lineHeight: 2 }}>
+                Add offer badges to sponsors<br />to show deals here
+              </span>
+            </div>
+          )}
+
+          {!loading && tile && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', transition: 'opacity .18s', opacity: tileFade ? 0 : 1 }}>
+
+              {/* Featured tile */}
+              <div
+                key={`tile-${tileIdx}`}
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '0 16px',
+                  borderBottom: `1px solid ${TOKEN.border}`,
+                  animation: 'sp-tile-in .3s cubic-bezier(0.22,1,0.36,1) both',
+                  background: TOKEN.white,
+                  cursor: tile.website_url?.trim() ? 'pointer' : 'default',
+                  transition: 'background .12s',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = TOKEN.bg; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = TOKEN.white; }}
+                onClick={() => { if (tile.website_url?.trim()) window.open(tile.website_url, '_blank'); }}
+              >
+                {/* Coloured badge pill */}
+                <span style={{
+                  background: bc.bg, color: bc.text,
+                  fontFamily: FONT.mono, fontSize: 7, fontWeight: 800,
+                  letterSpacing: '0.1em', textTransform: 'uppercase',
+                  padding: '3px 7px', flexShrink: 0,
+                  animation: 'sp-bpulse 2.2s ease infinite',
+                }}>
+                  {tile.offer_badge}
+                </span>
+
+                {/* Logo */}
+                {tile.logo_url
+                  ? <img src={tile.logo_url} alt={tile.name} style={{ width: 36, height: 36, objectFit: 'cover', flexShrink: 0, border: `1px solid ${TOKEN.border}` }} />
+                  : <div style={{ width: 36, height: 36, flexShrink: 0, background: TOKEN.bg3, border: `1px solid ${TOKEN.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT.serif, fontWeight: 900, fontSize: 13, color: TOKEN.gold2 }}>{spInitials(tile.name)}</div>
+                }
+
+                {/* Text */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: FONT.serif, fontSize: 13.5, fontWeight: 700, color: TOKEN.ink, lineHeight: 1.2, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {tile.name}
+                  </div>
+                  {(tile.offer_text?.trim() || tile.tagline?.trim()) && (
+                    <div style={{ fontFamily: FONT.mono, fontSize: 8.5, color: tile.offer_text?.trim() ? TOKEN.gold2 : TOKEN.ink4, letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {tile.offer_text?.trim() ? `✦ ${tile.offer_text}` : tile.tagline}
+                    </div>
+                  )}
+                </div>
+
+                {tile.website_url?.trim() && (
+                  <span style={{ color: TOKEN.ink5, flexShrink: 0, fontSize: 12 }}>↗</span>
+                )}
+              </div>
+
+              {/* Secondary mini rows */}
+              {hn > 1 && hotSponsors
+                .filter((_, i) => i !== tileIdx)
+                .slice(0, 2)
+                .map(hs => {
+                  const hbc = badgeColor(hs.offer_badge ?? '');
+                  return (
+                    <div
+                      key={hs.id}
+                      className="sp-tile-row"
+                      onClick={() => goTile(hotSponsors.indexOf(hs))}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 16px', borderTop: `1px solid ${TOKEN.border}`, cursor: 'pointer', transition: 'background .12s', background: TOKEN.bg2 }}
+                    >
+                      <span style={{ background: hbc.bg, color: hbc.text, fontFamily: FONT.mono, fontSize: 6, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '2px 5px', flexShrink: 0 }}>{hs.offer_badge}</span>
+                      {hs.logo_url
+                        ? <img src={hs.logo_url} alt={hs.name} style={{ width: 22, height: 22, objectFit: 'cover', flexShrink: 0, border: `1px solid ${TOKEN.border}` }} />
+                        : <div style={{ width: 22, height: 22, flexShrink: 0, background: TOKEN.bg3, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT.serif, fontWeight: 900, fontSize: 8, color: TOKEN.gold2 }}>{spInitials(hs.name)}</div>
+                      }
+                      <span style={{ fontFamily: FONT.sans, fontSize: 11, color: TOKEN.ink4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{hs.name}</span>
+                      {hs.offer_text?.trim() && (
+                        <span style={{ fontFamily: FONT.mono, fontSize: 7.5, color: TOKEN.gold2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, maxWidth: 90 }}>
+                          {hs.offer_text.slice(0, 24)}{hs.offer_text.length > 24 ? '…' : ''}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              }
+
+              {/* Dot nav */}
+              {hn > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 4, padding: '6px 0', flexShrink: 0, borderTop: `1px solid ${TOKEN.border}` }}>
+                  {hotSponsors.map((_, i) => (
+                    <button key={i} onClick={() => goTile(i)} style={{ width: i === tileIdx ? 14 : 5, height: 5, borderRadius: 3, border: 'none', background: i === tileIdx ? TOKEN.gold2 : TOKEN.border2, cursor: 'pointer', transition: 'all .25s', padding: 0 }} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-// ── Col 2: Lost & Found ───────────────────────────────────────────
-function LostFoundCol({
-  items, loading, onReport, onViewAll,
+// ── Col 2: Premium Notices — max fill, seamless, click → /notices ─
+function PremiumNoticesCol({
+  notices,
+  loading,
+  onViewAll,
 }: {
-  items: LostFoundItem[];
+  notices: Notice[];
   loading: boolean;
-  onReport: () => void;
   onViewAll: () => void;
 }) {
-  const [cur, setCur] = useState(0);
+  const navigate  = useNavigate();
+  const [cur, setCur]       = useState(0);
   const [fading, setFading] = useState(false);
-  const swipeStartX = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const n = items.length;
+  const timerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const n = notices.length;
+
+  const startTimer = (count: number) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (count < 2) return;
+    timerRef.current = setInterval(() => {
+      setFading(true);
+      setTimeout(() => { setCur(c => { setFading(false); return (c + 1) % count; }); }, 240);
+    }, 5500);
+  };
 
   const goTo = useCallback((next: number) => {
     const idx = ((next % (n || 1)) + (n || 1)) % (n || 1);
     setFading(true);
-    setTimeout(() => { setCur(idx); setFading(false); }, 200);
+    setTimeout(() => { setCur(idx); setFading(false); }, 240);
+    startTimer(n);
   }, [n]);
 
   useEffect(() => {
-    if (n < 2) return;
-    timerRef.current = setInterval(() => {
-      setFading(true);
-      setTimeout(() => { setCur(c => { setFading(false); return (c + 1) % n; }); }, 200);
-    }, 5000);
+    startTimer(n);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [n]);
 
-  const item = items[cur];
-  const isLost = item?.type === 'lost';
+  const NOTICE_TYPE_ROUTES: Record<string, string> = {
+    samvedana: 'samvedana', shraddhanjali: 'shraddhanjali',
+    bibaha: 'bibaha', bratabandha: 'bratabandha',
+    graduation: 'graduation', birth: 'birth', business: 'business',
+  };
+  const NP_LABEL: Record<string, string> = {
+    samvedana: 'समवेदना', shraddhanjali: 'श्रद्धाञ्जली',
+    bibaha: 'विवाह', bratabandha: 'व्रतबन्ध',
+    graduation: 'उत्तीर्ण', birth: 'जन्म', business: 'व्यापार',
+  };
+
+  const notice = notices[cur] ?? null;
+  const isObit = notice && ['samvedana','shraddhanjali'].includes(notice.notice_type);
+
+  const handleClick = () => {
+    if (!notice) { navigate('/notices'); return; }
+    const type = NOTICE_TYPE_ROUTES[notice.notice_type];
+    navigate(type ? `/notices?type=${type}` : '/notices');
+  };
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      height: '100%', overflow: 'hidden',
-      background: TOKEN.bg2,
-      borderRight: `1px solid ${TOKEN.border}`,
-    }}>
+    <>
       <style>{`
-        @keyframes lf-up {
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: none; }
-        }
-        @keyframes lf-prog {
-          from { transform: scaleX(0); }
-          to   { transform: scaleX(1); }
-        }
-        .lf-fade { transition: opacity .2s ease; }
-        .lf-fade.out { opacity: 0; }
-        .lf-in { animation: lf-up .3s cubic-bezier(0.22,1,0.36,1) both; }
-        .lf-nav-btn { transition: background .15s; }
-        .lf-nav-btn:hover { background: rgba(0,0,0,0.42) !important; }
-        .lf-phone:hover { opacity: 0.88; }
-        .lf-cta:hover { background: ${TOKEN.gold2} !important; }
-        .lf-cta:hover .lf-cta-label { color: ${TOKEN.ink} !important; }
-        .lf-cta:hover .lf-cta-plus { background: ${TOKEN.ink} !important; color: ${TOKEN.gold2} !important; }
+        @keyframes pn-prog { from{transform:scaleX(0)} to{transform:scaleX(1)} }
+        @keyframes pn-in   { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:none} }
+        .pn-fade           { transition:opacity .24s ease; }
+        .pn-fade.out       { opacity:0; }
+        .pn-card           { animation:pn-in .36s cubic-bezier(0.22,1,0.36,1) both; cursor:pointer; }
+        .pn-hint           { opacity:0; transition:opacity .18s; }
+        .pn-card:hover .pn-hint { opacity:1; }
       `}</style>
 
-      {/* ── Header ── */}
-      <ColHeader
-        eyebrow="Community · गुमेका वस्तुहरू"
-        title="Lost & Found"
-        action={<GhostBtn label="View all →" onClick={onViewAll} />}
-      />
+      <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden', background:TOKEN.white, borderRight:`1px solid ${TOKEN.border}` }}>
 
-      {/* ── Progress bar ── */}
-      {n > 1 && (
-        <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
-          {items.map((_, i) => (
-            <div key={i} onClick={() => goTo(i)} style={{
-              flex: 1, height: 3, background: TOKEN.border2,
-              cursor: 'pointer', position: 'relative', overflow: 'hidden',
-            }}>
-              {i === cur && (
-                <div style={{
-                  position: 'absolute', inset: 0, background: TOKEN.gold2,
-                  transformOrigin: 'left', animation: 'lf-prog 5s linear both',
-                }} />
-              )}
-              {i < cur && <div style={{ position: 'absolute', inset: 0, background: TOKEN.gold2, opacity: 0.4 }} />}
+        {/* ── Header ── */}
+        <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', gap:12, padding:'18px 24px 14px', background:TOKEN.white, borderBottom:`2.5px solid ${TOKEN.ink}`, flexShrink:0 }}>
+          <div>
+            <div style={{ fontFamily:FONT.mono, fontSize:9, letterSpacing:'0.18em', textTransform:'uppercase', color:TOKEN.gold2, marginBottom:5, display:'flex', alignItems:'center', gap:7 }}>
+              <span style={{ width:18, height:1, background:TOKEN.gold2, opacity:0.5, display:'inline-block', flexShrink:0 }} />
+              Premium · सूचनाहरू
             </div>
-          ))}
+            <div style={{ fontFamily:FONT.serif, fontWeight:700, fontSize:22, color:TOKEN.ink, lineHeight:1 }}>Notices</div>
+          </div>
+          <GhostBtn label="View all →" onClick={onViewAll} />
         </div>
-      )}
 
-      {/* ── PHOTO — 50% of column ── */}
-      <div
-        style={{ flex: '0 0 50%', position: 'relative', overflow: 'hidden', minHeight: 0 }}
-        onTouchStart={e => { swipeStartX.current = e.touches[0].clientX; }}
-        onTouchEnd={e => {
-          const dx = swipeStartX.current - e.changedTouches[0].clientX;
-          if (dx > 40) goTo(cur + 1);
-          if (dx < -40) goTo(cur - 1);
-        }}
-      >
-        <div className={`lf-fade${fading ? ' out' : ''}`} style={{ width: '100%', height: '100%' }}>
-          {loading ? (
-            <div style={{ width: '100%', height: '100%', background: TOKEN.bg3 }} />
-          ) : item?.photo_url ? (
-            <img src={item.photo_url} alt={item?.title}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-          ) : (
-            <div style={{
-              width: '100%', height: '100%',
-              background: `linear-gradient(150deg, ${TOKEN.bg3} 0%, ${TOKEN.bg2} 100%)`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <span style={{ fontSize: 56, opacity: 0.13, userSelect: 'none' }}>
-                {isLost ? '🔍' : '📦'}
-              </span>
+        {/* ── Thin progress bar — flush under header, no gap ── */}
+        {n > 1 && (
+          <div style={{ display:'flex', flexShrink:0 }}>
+            {notices.map((_, i) => (
+              <div key={i} onClick={() => goTo(i)}
+                style={{ flex:1, height:2, background:TOKEN.bg3, cursor:'pointer', position:'relative', overflow:'hidden' }}>
+                {i === cur && <div style={{ position:'absolute', inset:0, background:TOKEN.gold2, transformOrigin:'left', animation:'pn-prog 5.5s linear both' }} />}
+                {i < cur   && <div style={{ position:'absolute', inset:0, background:TOKEN.gold2, opacity:0.35 }} />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Card fills 100% of remaining space ── */}
+        <div style={{ flex:1, position:'relative', minHeight:0, overflow:'hidden' }}>
+
+          {/* Skeleton */}
+          {loading && (
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:TOKEN.bg2 }}>
+              <div style={{ width:'80%', height:'70%', background:TOKEN.border, opacity:0.25, animation:'flyers-skeleton 1.4s ease infinite' }} />
+            </div>
+          )}
+
+          {/* Empty */}
+          {!loading && n === 0 && (
+            <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:10, background:TOKEN.bg2 }}>
+              <span style={{ fontSize:28, opacity:0.1 }}>★</span>
+              <span style={{ fontFamily:FONT.mono, fontSize:8, color:TOKEN.ink5, letterSpacing:'0.12em', textTransform:'uppercase', textAlign:'center', lineHeight:1.9 }}>No premium notices yet.</span>
+            </div>
+          )}
+
+          {/* Notice — crossfade container */}
+          {!loading && n > 0 && (
+            <div className={`pn-fade${fading ? ' out' : ''}`}
+              style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column' }}>
+
+              {/* Floating top-left overlay: PREMIUM badge + type */}
+              <div style={{ position:'absolute', top:10, left:10, zIndex:3, display:'flex', alignItems:'center', gap:5, pointerEvents:'none' }}>
+                <span style={{ fontFamily:FONT.mono, fontSize:6.5, letterSpacing:'0.14em', textTransform:'uppercase', fontWeight:700, color:TOKEN.gold2, background:TOKEN.ink, padding:'2px 7px' }}>★ PREMIUM</span>
+                {notice && (
+                  <span style={{
+                    fontFamily:FONT.mono, fontSize:6.5, letterSpacing:'0.1em', textTransform:'uppercase', fontWeight:600,
+                    padding:'2px 6px',
+                    background: isObit ? 'rgba(55,65,81,0.08)' : TOKEN.goldx,
+                    color: isObit ? '#374151' : TOKEN.gold2,
+                    border: `1px solid ${isObit ? TOKEN.border : 'rgba(180,135,40,.25)'}`,
+                  }}>
+                    {NP_LABEL[notice.notice_type] ?? notice.notice_type}
+                  </span>
+                )}
+              </div>
+
+              {/* Floating counter top-right */}
+              {n > 1 && (
+                <div style={{ position:'absolute', top:10, right:10, zIndex:3, fontFamily:FONT.mono, fontSize:8, color:TOKEN.ink5, background:TOKEN.white, border:`1px solid ${TOKEN.border}`, padding:'2px 7px', pointerEvents:'none' }}>
+                  {cur + 1} / {n}
+                </div>
+              )}
+
+              {/* Card scaled to fill — transformOrigin top center pushes it upward to use all space */}
+              <div
+                key={`pnc-${cur}`}
+                className="pn-card"
+                onClick={handleClick}
+                title={notice ? `Browse ${NP_LABEL[notice.notice_type] ?? 'Notices'}` : 'View Notices'}
+                style={{ flex:1, display:'flex', alignItems:'flex-start', justifyContent:'center', overflow:'hidden', paddingTop:2 }}
+              >
+                <div style={{
+                  width:'100%',
+                  transform:'scale(0.88)',
+                  transformOrigin:'top center',
+                }}>
+                  <NoticeCard notice={notices[cur]} />
+                </div>
+
+                {/* Hover hint */}
+                <div className="pn-hint" style={{
+                  position:'absolute', inset:0,
+                  background:'rgba(17,16,9,0.05)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  pointerEvents:'none',
+                }}>
+                  <div style={{
+                    background:'rgba(17,16,9,0.76)', backdropFilter:'blur(8px)',
+                    padding:'5px 14px',
+                    fontFamily:FONT.mono, fontSize:8, letterSpacing:'0.14em',
+                    textTransform:'uppercase', color:TOKEN.gold2, fontWeight:700,
+                    display:'flex', alignItems:'center', gap:6,
+                  }}>
+                    → {notice ? `Browse ${NP_LABEL[notice.notice_type] ?? 'Notices'}` : 'View Notices'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Subtle left/right tap zones — no visible buttons, just ghost areas */}
+              {n > 1 && (
+                <>
+                  <div onClick={e => { e.stopPropagation(); goTo(cur - 1); }}
+                    style={{ position:'absolute', left:0, top:40, bottom:0, width:28, cursor:'w-resize', zIndex:4, opacity:0 }} />
+                  <div onClick={e => { e.stopPropagation(); goTo(cur + 1); }}
+                    style={{ position:'absolute', right:0, top:40, bottom:0, width:28, cursor:'e-resize', zIndex:4, opacity:0 }} />
+                </>
+              )}
             </div>
           )}
         </div>
-
-        {/* Seamless scrim */}
-        <div style={{
-          position: 'absolute', bottom: 0, left: 0, right: 0, height: 64,
-          background: `linear-gradient(to top, ${TOKEN.bg2} 0%, transparent 100%)`,
-          pointerEvents: 'none',
-        }} />
-
-        {/* Type badge */}
-        {!loading && item && (
-          <div style={{
-            position: 'absolute', bottom: 10, left: 12,
-            display: 'inline-flex', alignItems: 'center', gap: 4,
-            padding: '3px 9px',
-            fontFamily: FONT.mono, fontSize: 7.5, fontWeight: 700,
-            letterSpacing: '0.13em', textTransform: 'uppercase',
-            backdropFilter: 'blur(8px)',
-            ...(isLost
-              ? { background: 'rgba(127,29,29,0.88)', color: '#fca5a5' }
-              : { background: 'rgba(20,83,45,0.88)', color: '#86efac' }),
-          }}>
-            {isLost ? '✦ LOST' : '◈ FOUND'}
-          </div>
-        )}
-
-        {/* Time */}
-        {!loading && item && (
-          <div style={{
-            position: 'absolute', top: 9, right: 10,
-            background: 'rgba(17,16,9,0.5)', backdropFilter: 'blur(5px)',
-            padding: '2px 8px',
-            fontFamily: FONT.mono, fontSize: 7.5, color: 'rgba(255,255,255,0.82)',
-            letterSpacing: '0.05em',
-          }}>
-            {timeAgo(item.created_at)}
-          </div>
-        )}
-
-        {/* Nav arrows */}
-        {n > 1 && !loading && (
-          <>
-            <button className="lf-nav-btn" onClick={() => goTo(cur - 1)} style={{
-              position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
-              width: 26, height: 26, borderRadius: '50%', zIndex: 4,
-              border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.22)',
-              color: '#fff', fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>‹</button>
-            <button className="lf-nav-btn" onClick={() => goTo(cur + 1)} style={{
-              position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-              width: 26, height: 26, borderRadius: '50%', zIndex: 4,
-              border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.22)',
-              color: '#fff', fontSize: 14, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>›</button>
-          </>
-        )}
       </div>
-
-      {/* ── DESCRIPTION — fills remaining space ── */}
-      <div
-        className={fading ? '' : 'lf-in'}
-        style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          padding: '10px 16px 6px', minHeight: 0, overflow: 'hidden',
-          background: TOKEN.bg2,
-        }}
-      >
-        {loading ? (
-          <>
-            <div style={{ height: 15, width: '72%', background: TOKEN.border, marginBottom: 9 }} />
-            <div style={{ height: 10, width: '100%', background: TOKEN.border, marginBottom: 5 }} />
-            <div style={{ height: 10, width: '80%', background: TOKEN.border }} />
-          </>
-        ) : !item ? (
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span style={{ fontFamily: FONT.mono, fontSize: 9, color: TOKEN.ink5, letterSpacing: '0.12em', textTransform: 'uppercase', textAlign: 'center' }}>
-              No reports yet.<br />Be the first to post.
-            </span>
-          </div>
-        ) : (
-          <>
-            <div style={{
-              fontFamily: FONT.serif, fontSize: 15, fontWeight: 700,
-              color: TOKEN.ink, lineHeight: 1.2, marginBottom: 5, flexShrink: 0,
-              display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-            } as React.CSSProperties}>
-              {item.title}
-            </div>
-            <div style={{
-              fontFamily: FONT.sans, fontSize: 11.5, color: TOKEN.ink4,
-              lineHeight: 1.6, flex: 1,
-              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-            } as React.CSSProperties}>
-              {item.description}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── BOTTOM — same height & style as Promote strip ── */}
-      <div style={{
-        flexShrink: 0,
-        height: 56,
-        display: 'flex',
-        alignItems: 'stretch',
-        borderTop: `3px solid ${TOKEN.gold2}`,
-        background: TOKEN.ink,
-      }}>
-
-        {/* BOX 1 — Contact info on ink bg */}
-        <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5,
-          padding: '0 16px',
-          minWidth: 0,
-          borderRight: '1px solid rgba(255,255,255,0.08)',
-        }}>
-
-          {/* Row 1: phone icon + number + WA icon */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <a
-              href={item ? `tel:${item.phone}` : '#'}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                textDecoration: 'none', flex: 1, minWidth: 0,
-                transition: 'opacity .15s',
-              }}
-              onMouseEnter={e => (e.currentTarget as HTMLAnchorElement).style.opacity = '0.7'}
-              onMouseLeave={e => (e.currentTarget as HTMLAnchorElement).style.opacity = '1'}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.09 9.8a19.79 19.79 0 01-3.07-8.63A2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14z"/>
-              </svg>
-              <span style={{
-                fontFamily: FONT.mono, fontSize: 12, fontWeight: 700,
-                color: TOKEN.gold2, letterSpacing: '0.02em',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {item?.phone ?? '—'}
-              </span>
-            </a>
-            {/* WhatsApp */}
-            <a
-              href={item ? `https://wa.me/977${(item.phone ?? '').replace(/^0/, '')}` : '#'}
-              target="_blank" rel="noopener noreferrer"
-              style={{ color: '#25D366', flexShrink: 0, textDecoration: 'none', display: 'flex', alignItems: 'center', transition: 'color .15s' }}
-              onMouseEnter={e => (e.currentTarget as HTMLAnchorElement).style.color = '#1da851'}
-              onMouseLeave={e => (e.currentTarget as HTMLAnchorElement).style.color = '#25D366'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-              </svg>
-            </a>
-          </div>
-
-          {/* Row 2: location */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0116 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            <span style={{
-              fontFamily: FONT.mono, fontSize: 10, color: 'rgba(255,255,255,0.4)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            }}>
-              {item?.location ?? '—'}
-            </span>
-          </div>
-        </div>
-
-        {/* BOX 2 — Report button */}
-        <div
-          className="lf-cta"
-          onClick={onReport}
-          style={{
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 4,
-            padding: '0 16px', flexShrink: 0,
-            background: TOKEN.gold2, cursor: 'pointer',
-            transition: 'background .18s',
-          }}
-          onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.background = 'rgba(255,255,255,0.12)'}
-          onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.background = TOKEN.gold2}
-        >
-          <span className="lf-cta-plus" style={{
-            width: 18, height: 18, borderRadius: '50%',
-            background: TOKEN.ink, color: TOKEN.gold2,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14, lineHeight: 1, fontWeight: 700,
-            transition: 'background .18s, color .18s',
-          }}>+</span>
-          <span className="lf-cta-label" style={{
-            fontFamily: FONT.mono, fontSize: 7, letterSpacing: '0.1em',
-            textTransform: 'uppercase', color: TOKEN.ink, fontWeight: 700,
-            transition: 'color .18s',
-          }}>Report</span>
-        </div>
-      </div>
-
-    </div>
+    </>
   );
 }
 
-// ── Cat route map — maps catKey → page path ───────────────────────
+// ── Cat route map ─────────────────────────────────────────────────
 const CAT_ROUTES: Record<string, string> = {
   'real-estate':  '/real-estate',
   'jobs':         '/jobs',
@@ -772,11 +705,10 @@ const CAT_ROUTES: Record<string, string> = {
   'general':      '/',
 };
 
-// Fallback colors for categories not in CAT_COLORS
 const CAT_PILL_FALLBACK = { bg: '#F0EDE6', color: '#6A6458', border: '#DDD8CE' };
 
 // ── Col 3: Live Feed ──────────────────────────────────────────────
-const FEED_CAP = 10; // max rows shown; oldest drops off when newer arrive
+const FEED_CAP = 10;
 
 function LiveFeedCol({
   items,
@@ -972,186 +904,409 @@ function LiveFeedCol({
   );
 }
 
-// ── Ad Post Modal ─────────────────────────────────────────────────
-function AdPostModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(4px)' }} onClick={onClose} />
-      <div style={{
-        position: 'relative', background: TOKEN.white,
-        width: '100%', maxWidth: 520,
-        maxHeight: '92vh', overflowY: 'auto',
-        margin: '0 16px',
-        boxShadow: '0 24px 80px rgba(0,0,0,.35)',
-        animation: 'modal-in 0.2s ease',
-      }}>
-        <div style={{ height: 3, background: TOKEN.ink }} />
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '18px 24px 14px',
-          position: 'sticky', top: 0, background: TOKEN.white, zIndex: 1,
-          borderBottom: `1px solid ${TOKEN.border}`,
-        }}>
-          <div>
-            <div style={{ fontFamily: FONT.serif, fontWeight: 900, fontSize: 22, color: TOKEN.ink, lineHeight: 1 }}>Post Your Ad</div>
-            <div style={{ fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: TOKEN.ink5, marginTop: 4 }}>Flyers · Classified Advertisement</div>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: `1px solid ${TOKEN.border}`, padding: '6px 12px', cursor: 'pointer', color: TOKEN.ink5, fontSize: 14, lineHeight: 1 }}>✕</button>
-        </div>
-        <div style={{ padding: '20px 24px 32px' }}>
-          <AdForm onSuccess={() => { onSuccess(); onClose(); }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Notices preview ───────────────────────────────────────────────
-function NoticesPreview() {
+// ── Lost & Found Full Section (replaces NoticesPreview) ───────────
+function LostFoundSection() {
   const navigate                  = useNavigate();
-  const [premium,  setPremium]    = useState<Notice[]>([]);
+  const [items,    setItems]      = useState<LostFoundItem[]>([]);
   const [loading,  setLoading]    = useState(true);
   const [cur,      setCur]        = useState(0);
-  const [showForm, setShowForm]   = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [fading,   setFading]     = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const swipeStartX = useRef(0);
+  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    fetch(`${API}/notices?limit=20`)
+  const fetchItems = () => {
+    fetch(`${API}/lost-found?limit=10`)
       .then(r => r.json())
-      .then((d: { notices: Notice[] }) => setPremium((d.notices ?? []).filter(n => n.is_premium)))
-      .catch(() => setPremium([]))
+      .then((d: { items: LostFoundItem[] }) => setItems(d.items ?? []))
+      .catch(() => setItems([]))
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  const n = premium.length;
+  useEffect(() => { fetchItems(); }, []);
+
+  const n = items.length;
+
+  const goTo = useCallback((next: number) => {
+    const idx = ((next % (n || 1)) + (n || 1)) % (n || 1);
+    setFading(true);
+    setTimeout(() => { setCur(idx); setFading(false); }, 200);
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (n > 1) timerRef.current = setInterval(() => {
+      setFading(true);
+      setTimeout(() => { setCur(c => { setFading(false); return (c + 1) % n; }); }, 200);
+    }, 5000);
+  }, [n]);
 
   useEffect(() => {
     if (n < 2) return;
-    timerRef.current = setInterval(() => setCur(c => (c + 1) % n), 4000);
+    timerRef.current = setInterval(() => {
+      setFading(true);
+      setTimeout(() => { setCur(c => { setFading(false); return (c + 1) % n; }); }, 200);
+    }, 5000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [n]);
 
-  const goTo = (i: number) => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    const next = ((i % (n || 1)) + (n || 1)) % (n || 1);
-    setCur(next);
-    if (n > 1) timerRef.current = setInterval(() => setCur(c => (c + 1) % n), 4000);
-  };
-
-  const slot = (offset: number) => premium[((cur + offset) % n + n) % n];
+  const item   = items[cur];
+  const isLost = item?.type === 'lost';
 
   return (
     <>
       <style>{`
-        @keyframes nc-in { from { opacity:0; transform:scale(.96); } to { opacity:1; transform:scale(1); } }
-        .nc-center { animation: nc-in .35s cubic-bezier(0.22,1,0.36,1) both; }
-        .nc-side-card { transition: opacity .3s, transform .3s, filter .3s; }
-        .nc-nav:hover { background: ${TOKEN.ink} !important; color: ${TOKEN.white} !important; }
+        @keyframes lfs-up {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes lfs-prog {
+          from { transform: scaleX(0); }
+          to   { transform: scaleX(1); }
+        }
+        .lfs-fade { transition: opacity .2s ease; }
+        .lfs-fade.out { opacity: 0; }
+        .lfs-in { animation: lfs-up .35s cubic-bezier(0.22,1,0.36,1) both; }
+        .lfs-item:hover { background: ${TOKEN.bg} !important; }
+        .lfs-report-btn:hover { background: ${TOKEN.ink} !important; color: ${TOKEN.white} !important; }
       `}</style>
-      <div style={{ background: TOKEN.bg3 }}>
+
+      <div style={{ background: TOKEN.bg2 }}>
         <div style={{ height: 4, background: `repeating-linear-gradient(90deg,${TOKEN.gold2} 0,${TOKEN.gold2} 5px,${TOKEN.goldx} 5px,${TOKEN.goldx} 10px)` }} />
 
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, padding: '24px 52px 0' }}>
           <div>
-            <div style={{ fontFamily: FONT.deva, fontWeight: 800, fontSize: 34, color: TOKEN.ink, lineHeight: 1 }}>सूचनाहरू</div>
-            <div style={{ fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase', color: TOKEN.gold, marginTop: 5 }}>
-              Notices · Death &amp; Celebration
+            <div style={{ fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase', color: TOKEN.ink5, marginBottom: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 18, height: 1, background: TOKEN.gold2, opacity: 0.5, display: 'inline-block' }} />
+              Community · गुमेका वस्तुहरू
+            </div>
+            <div style={{ fontFamily: FONT.serif, fontWeight: 700, fontSize: 34, color: TOKEN.ink, lineHeight: 1 }}>
+              Lost &amp; Found
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={() => navigate('/notices')} style={{ fontFamily: FONT.mono, fontSize: 10, letterSpacing: '0.09em', textTransform: 'uppercase', padding: '7px 14px', border: `1px solid ${TOKEN.border2}`, background: TOKEN.white, color: TOKEN.ink4, cursor: 'pointer' }}>View all</button>
-            <button onClick={() => setShowForm(true)} style={{ background: TOKEN.ink, color: TOKEN.white, border: 'none', padding: '8px 16px', fontFamily: FONT.deva, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ सूचना दिनुहोस्</button>
+            <button
+              onClick={() => navigate('/lost-found')}
+              style={{ fontFamily: FONT.mono, fontSize: 10, letterSpacing: '0.09em', textTransform: 'uppercase', padding: '7px 14px', border: `1px solid ${TOKEN.border2}`, background: TOKEN.white, color: TOKEN.ink4, cursor: 'pointer' }}
+            >
+              View all
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              style={{ background: TOKEN.ink, color: TOKEN.white, border: 'none', padding: '8px 16px', fontFamily: FONT.mono, fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', fontWeight: 600, cursor: 'pointer' }}
+            >
+              + Report
+            </button>
           </div>
         </div>
 
-        {/* Tab bar */}
-        <div style={{ background: TOKEN.white, borderBottom: `1px solid ${TOKEN.border}`, marginTop: 14 }}>
-          <div style={{ display: 'flex', overflowX: 'auto', scrollbarWidth: 'none', padding: '0 52px' }}>
-            {NOTICE_TABS.slice(0, 5).map(t => (
-              <button key={t.key} onClick={() => navigate('/notices')} style={{ fontFamily: FONT.deva, fontWeight: t.key === '' ? 700 : 500, padding: '10px 14px', border: 'none', background: 'none', color: t.key === '' ? TOKEN.ink : TOKEN.ink5, borderBottom: `2px solid ${t.key === '' ? TOKEN.ink : 'transparent'}`, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer' }}>{t.label}</button>
-            ))}
-          </div>
-        </div>
+        {/* Main content — two-col layout */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: 0, padding: '20px 52px 28px' }}>
 
-        {/* Carousel body */}
-        <div style={{ padding: '24px 52px 28px' }}>
+          {/* LEFT — Featured carousel card */}
+          <div style={{ borderRight: `1px solid ${TOKEN.border}`, paddingRight: 24 }}>
 
-          {loading && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr', gap: 20 }}>
-              {[0,1,2].map(i => <div key={i} style={{ height: 240, background: TOKEN.border, opacity: 0.22 }} />)}
-            </div>
-          )}
-
-          {!loading && n === 0 && (
-            <div style={{ textAlign: 'center', padding: '36px 0', fontFamily: FONT.mono, fontSize: 10, color: TOKEN.ink5, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-              No premium notices yet ·{' '}
-              <button onClick={() => setShowForm(true)} style={{ background: 'none', border: 'none', color: TOKEN.gold2, fontFamily: FONT.mono, fontSize: 10, letterSpacing: '0.1em', cursor: 'pointer', textDecoration: 'underline' }}>Post one</button>
-            </div>
-          )}
-
-          {!loading && n === 1 && (
-            <div style={{ maxWidth: 340, margin: '0 auto' }}>
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', top: -10, right: -10, zIndex: 3, background: TOKEN.gold2, color: TOKEN.ink, fontFamily: FONT.mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.1em', padding: '3px 8px', textTransform: 'uppercase' }}>★ PREMIUM</div>
-                <NoticeCard notice={premium[0]} />
-              </div>
-            </div>
-          )}
-
-          {!loading && n > 1 && (
-            <div style={{ position: 'relative', padding: '0 36px' }}>
-              {/* ★ label + counter */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <span style={{ fontFamily: FONT.mono, fontSize: 8, letterSpacing: '0.18em', textTransform: 'uppercase', color: TOKEN.gold2, fontWeight: 700 }}>★ Featured Premium Notices</span>
-                <div style={{ flex: 1, height: 1, background: TOKEN.gold2, opacity: 0.2 }} />
-                <span style={{ fontFamily: FONT.mono, fontSize: 8, color: TOKEN.ink5 }}>{cur + 1} / {n}</span>
-              </div>
-
-              {/* 3-slot stage */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr 1fr', gap: 16, alignItems: 'center' }}>
-
-                {/* LEFT */}
-                <div className="nc-side-card" onClick={() => goTo(cur - 1)} style={{ opacity: 0.4, transform: 'scale(0.88) translateX(8px)', cursor: 'pointer', filter: 'grayscale(0.25)', transformOrigin: 'right center', pointerEvents: 'auto' }}>
-                  <NoticeCard notice={slot(-1)} />
-                </div>
-
-                {/* CENTER */}
-                <div key={`center-${cur}`} className="nc-center" style={{ position: 'relative', zIndex: 2 }}>
-                  <div style={{ position: 'absolute', top: -10, right: -10, zIndex: 3, background: TOKEN.gold2, color: TOKEN.ink, fontFamily: FONT.mono, fontSize: 7, fontWeight: 700, letterSpacing: '0.1em', padding: '3px 8px', textTransform: 'uppercase' }}>★ PREMIUM</div>
-                  <NoticeCard notice={premium[cur]} />
-                </div>
-
-                {/* RIGHT */}
-                <div className="nc-side-card" onClick={() => goTo(cur + 1)} style={{ opacity: 0.4, transform: 'scale(0.88) translateX(-8px)', cursor: 'pointer', filter: 'grayscale(0.25)', transformOrigin: 'left center', pointerEvents: 'auto' }}>
-                  <NoticeCard notice={slot(1)} />
-                </div>
-              </div>
-
-              {/* Nav arrows */}
-              <button className="nc-nav" onClick={() => goTo(cur - 1)} style={{ position: 'absolute', left: 0, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: `1px solid ${TOKEN.border2}`, background: TOKEN.white, cursor: 'pointer', fontSize: 16, color: TOKEN.ink4, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s', zIndex: 5 }}>‹</button>
-              <button className="nc-nav" onClick={() => goTo(cur + 1)} style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 30, height: 30, borderRadius: '50%', border: `1px solid ${TOKEN.border2}`, background: TOKEN.white, cursor: 'pointer', fontSize: 16, color: TOKEN.ink4, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .15s', zIndex: 5 }}>›</button>
-
-              {/* Dots */}
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 5, marginTop: 14 }}>
-                {premium.map((_, i) => (
-                  <button key={i} onClick={() => goTo(i)} style={{ width: i === cur ? 20 : 6, height: 6, borderRadius: 3, border: 'none', background: i === cur ? TOKEN.gold2 : TOKEN.border2, cursor: 'pointer', transition: 'all .3s', padding: 0 }} />
+            {/* Progress bar */}
+            {n > 1 && (
+              <div style={{ display: 'flex', gap: 2, marginBottom: 10 }}>
+                {items.map((_, i) => (
+                  <div key={i} onClick={() => goTo(i)} style={{
+                    flex: 1, height: 3, background: TOKEN.border2,
+                    cursor: 'pointer', position: 'relative', overflow: 'hidden',
+                  }}>
+                    {i === cur && (
+                      <div style={{
+                        position: 'absolute', inset: 0, background: TOKEN.gold2,
+                        transformOrigin: 'left', animation: 'lfs-prog 5s linear both',
+                      }} />
+                    )}
+                    {i < cur && <div style={{ position: 'absolute', inset: 0, background: TOKEN.gold2, opacity: 0.4 }} />}
+                  </div>
                 ))}
               </div>
+            )}
+
+            {/* Photo */}
+            <div
+              style={{ position: 'relative', height: 260, overflow: 'hidden', marginBottom: 0 }}
+              onTouchStart={e => { swipeStartX.current = e.touches[0].clientX; }}
+              onTouchEnd={e => {
+                const dx = swipeStartX.current - e.changedTouches[0].clientX;
+                if (dx > 40) goTo(cur + 1);
+                if (dx < -40) goTo(cur - 1);
+              }}
+            >
+              <div className={`lfs-fade${fading ? ' out' : ''}`} style={{ width: '100%', height: '100%' }}>
+                {loading ? (
+                  <div style={{ width: '100%', height: '100%', background: TOKEN.bg3, animation: 'flyers-skeleton 1.4s ease infinite' }} />
+                ) : item?.photo_url ? (
+                  <img src={item.photo_url} alt={item.title}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                ) : (
+                  <div style={{
+                    width: '100%', height: '100%',
+                    background: `linear-gradient(150deg, ${TOKEN.bg3} 0%, ${TOKEN.bg2} 100%)`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <span style={{ fontSize: 64, opacity: 0.1, userSelect: 'none' }}>
+                      {isLost ? '🔍' : '📦'}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Scrim */}
+              <div style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0, height: 80,
+                background: `linear-gradient(to top, ${TOKEN.bg2} 0%, transparent 100%)`,
+                pointerEvents: 'none',
+              }} />
+
+              {/* Type badge */}
+              {!loading && item && (
+                <div style={{
+                  position: 'absolute', bottom: 10, left: 12,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  padding: '3px 9px',
+                  fontFamily: FONT.mono, fontSize: 7.5, fontWeight: 700,
+                  letterSpacing: '0.13em', textTransform: 'uppercase',
+                  backdropFilter: 'blur(8px)',
+                  ...(isLost
+                    ? { background: 'rgba(127,29,29,0.88)', color: '#fca5a5' }
+                    : { background: 'rgba(20,83,45,0.88)', color: '#86efac' }),
+                }}>
+                  {isLost ? '✦ LOST' : '◈ FOUND'}
+                </div>
+              )}
+
+              {/* Time */}
+              {!loading && item && (
+                <div style={{
+                  position: 'absolute', top: 9, right: 10,
+                  background: 'rgba(17,16,9,0.5)', backdropFilter: 'blur(5px)',
+                  padding: '2px 8px',
+                  fontFamily: FONT.mono, fontSize: 7.5, color: 'rgba(255,255,255,0.82)',
+                  letterSpacing: '0.05em',
+                }}>
+                  {timeAgo(item.created_at)}
+                </div>
+              )}
+
+              {/* Nav arrows */}
+              {n > 1 && !loading && (
+                <>
+                  <button onClick={() => goTo(cur - 1)} style={{
+                    position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+                    width: 26, height: 26, borderRadius: '50%', zIndex: 4,
+                    border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.22)',
+                    color: '#fff', fontSize: 14, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>‹</button>
+                  <button onClick={() => goTo(cur + 1)} style={{
+                    position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                    width: 26, height: 26, borderRadius: '50%', zIndex: 4,
+                    border: '1px solid rgba(255,255,255,0.25)', background: 'rgba(0,0,0,0.22)',
+                    color: '#fff', fontSize: 14, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>›</button>
+                </>
+              )}
             </div>
-          )}
+
+            {/* Description */}
+            <div className={fading ? '' : 'lfs-in'} style={{
+              padding: '12px 0 0',
+              background: TOKEN.bg2,
+            }}>
+              {loading ? (
+                <>
+                  <div style={{ height: 16, width: '72%', background: TOKEN.border, marginBottom: 8 }} />
+                  <div style={{ height: 10, width: '100%', background: TOKEN.border, marginBottom: 5 }} />
+                  <div style={{ height: 10, width: '60%', background: TOKEN.border }} />
+                </>
+              ) : !item ? (
+                <div style={{ fontFamily: FONT.mono, fontSize: 9, color: TOKEN.ink5, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  No reports yet.
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    fontFamily: FONT.serif, fontSize: 16, fontWeight: 700,
+                    color: TOKEN.ink, lineHeight: 1.2, marginBottom: 6,
+                    display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  } as React.CSSProperties}>
+                    {item.title}
+                  </div>
+                  <div style={{
+                    fontFamily: FONT.sans, fontSize: 12, color: TOKEN.ink4,
+                    lineHeight: 1.65, marginBottom: 10,
+                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                  } as React.CSSProperties}>
+                    {item.description}
+                  </div>
+
+                  {/* Contact row */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px',
+                    background: TOKEN.ink,
+                    borderTop: `2px solid ${TOKEN.gold2}`,
+                  }}>
+                    <a href={`tel:${item.phone}`} style={{ display: 'flex', alignItems: 'center', gap: 5, textDecoration: 'none', flex: 1, minWidth: 0 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.09 9.8a19.79 19.79 0 01-3.07-8.63A2 2 0 012 0h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14z"/>
+                      </svg>
+                      <span style={{ fontFamily: FONT.mono, fontSize: 11, fontWeight: 700, color: TOKEN.gold2, letterSpacing: '0.02em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.phone}
+                      </span>
+                    </a>
+                    <a
+                      href={`https://wa.me/977${(item.phone ?? '').replace(/^0/, '')}`}
+                      target="_blank" rel="noopener noreferrer"
+                      style={{ color: '#25D366', flexShrink: 0, textDecoration: 'none' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                      </svg>
+                    </a>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0116 0z"/><circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      <span style={{ fontFamily: FONT.mono, fontSize: 9, color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 80 }}>
+                        {item.location}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT — List of recent items */}
+          <div style={{ paddingLeft: 24 }}>
+            <div style={{ fontFamily: FONT.mono, fontSize: 8, letterSpacing: '0.16em', textTransform: 'uppercase', color: TOKEN.ink5, marginBottom: 12 }}>
+              Recent Reports
+            </div>
+
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: `1px solid ${TOKEN.border}`, opacity: 1 - i * 0.15 }}>
+                  <div style={{ width: 44, height: 44, background: TOKEN.bg3, flexShrink: 0, animation: 'flyers-skeleton 1.4s ease infinite' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ height: 11, width: '60%', background: TOKEN.border, marginBottom: 6, animation: 'flyers-skeleton 1.4s ease infinite' }} />
+                    <div style={{ height: 8, width: '80%', background: TOKEN.bg3, animation: 'flyers-skeleton 1.4s ease infinite' }} />
+                  </div>
+                </div>
+              ))
+            ) : items.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', gap: 12 }}>
+                <span style={{ fontSize: 36, opacity: 0.2 }}>🔍</span>
+                <span style={{ fontFamily: FONT.mono, fontSize: 8, color: TOKEN.ink5, letterSpacing: '0.12em', textTransform: 'uppercase', textAlign: 'center' }}>
+                  No reports yet.<br />Be the first to post.
+                </span>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="lfs-report-btn"
+                  style={{ marginTop: 6, padding: '8px 20px', background: TOKEN.white, border: `1px solid ${TOKEN.border2}`, fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: TOKEN.ink4, cursor: 'pointer', transition: 'background .15s, color .15s' }}
+                >
+                  + Report Item
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {items.map((it, i) => {
+                  const isActive = i === cur;
+                  const lost     = it.type === 'lost';
+                  return (
+                    <div
+                      key={it.id}
+                      className="lfs-item"
+                      onClick={() => goTo(i)}
+                      style={{
+                        display: 'flex', gap: 12, alignItems: 'flex-start',
+                        padding: '10px 10px',
+                        borderBottom: `1px solid ${TOKEN.border}`,
+                        cursor: 'pointer', transition: 'background .12s',
+                        background: isActive ? TOKEN.goldx : 'transparent',
+                        borderLeft: isActive ? `3px solid ${TOKEN.gold2}` : '3px solid transparent',
+                      }}
+                    >
+                      {/* Thumbnail */}
+                      <div style={{ width: 44, height: 44, flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
+                        {it.photo_url ? (
+                          <img src={it.photo_url} alt={it.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        ) : (
+                          <div style={{
+                            width: '100%', height: '100%',
+                            background: lost ? 'rgba(127,29,29,0.08)' : 'rgba(20,83,45,0.08)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 18, opacity: 0.5,
+                          }}>
+                            {lost ? '🔍' : '📦'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Text */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
+                          <span style={{
+                            fontFamily: FONT.mono, fontSize: 6.5, fontWeight: 700,
+                            letterSpacing: '0.1em', textTransform: 'uppercase',
+                            padding: '1px 5px',
+                            ...(lost
+                              ? { background: 'rgba(127,29,29,0.1)', color: '#991b1b' }
+                              : { background: 'rgba(20,83,45,0.1)', color: '#166534' }),
+                          }}>
+                            {lost ? 'LOST' : 'FOUND'}
+                          </span>
+                          <span style={{ fontFamily: FONT.mono, fontSize: 8, color: TOKEN.ink5, marginLeft: 'auto', flexShrink: 0 }}>
+                            {timeAgo(it.created_at)}
+                          </span>
+                        </div>
+                        <div style={{
+                          fontFamily: FONT.serif, fontSize: 13, fontWeight: 700,
+                          color: TOKEN.ink, lineHeight: 1.2, marginBottom: 2,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {it.title}
+                        </div>
+                        <div style={{
+                          fontFamily: FONT.sans, fontSize: 11, color: TOKEN.ink4, lineHeight: 1.5,
+                          display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        } as React.CSSProperties}>
+                          {it.description}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* View all footer */}
+                <button
+                  onClick={() => navigate('/lost-found')}
+                  style={{
+                    marginTop: 12, padding: '9px 0',
+                    background: 'none', border: `1px solid ${TOKEN.border2}`,
+                    fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.1em',
+                    textTransform: 'uppercase', color: TOKEN.ink4, cursor: 'pointer',
+                    transition: 'background .15s',
+                  }}
+                  onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = TOKEN.bg}
+                  onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'none'}
+                >
+                  View all reports →
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {showForm && (
-        <NoticeForm
-          onClose={() => setShowForm(false)}
-          onSuccess={() => { setShowForm(false); navigate('/notices'); }}
+      {showModal && (
+        <LostFoundModal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          onSuccess={() => { setShowModal(false); fetchItems(); }}
         />
       )}
     </>
@@ -1163,20 +1318,18 @@ export default function HomePage() {
   const navigate       = useNavigate();
   const { isLoggedIn } = useAuth();
 
-  const [liveFeed,       setLiveFeed]       = useState<LiveFeedItem[]>([]);
-  const [sponsors,       setSponsors]       = useState<Sponsor[]>([]);
-  const [lostFound,      setLostFound]      = useState<LostFoundItem[]>([]);
-  const [categoryCounts, setCategoryCounts] = useState<CategoryCount[]>([]);
-  const [feedLoading,    setFeedLoading]    = useState(true);
-  const [sponsorLoading, setSponsorLoading] = useState(true);
-  const [lfLoading,      setLfLoading]      = useState(true);
-  const [newEntryId,     setNewEntryId]     = useState<string | null>(null);
-  const [refreshKey,     setRefreshKey]     = useState(0);
+  const [liveFeed,        setLiveFeed]        = useState<LiveFeedItem[]>([]);
+  const [sponsors,        setSponsors]        = useState<SponsorRecord[]>([]);
+  const [premiumNotices,  setPremiumNotices]  = useState<Notice[]>([]);
+  const [categoryCounts,  setCategoryCounts]  = useState<CategoryCount[]>([]);
+  const [feedLoading,     setFeedLoading]     = useState(true);
+  const [bannerLoading,   setBannerLoading]   = useState(true);  const [noticesLoading,  setNoticesLoading]  = useState(true);
+  const [newEntryId,      setNewEntryId]      = useState<string | null>(null);
+  const [refreshKey,      setRefreshKey]      = useState(0);
   const prevIdsRef = useRef<Set<string>>(new Set());
 
-  const [showLogin,   setShowLogin]   = useState(false);
-  const [showAdForm,  setShowAdForm]  = useState(false);
-  const [showLFModal, setShowLFModal] = useState(false);   // ← NEW
+  const [showLogin,  setShowLogin]  = useState(false);
+  const [showAdForm, setShowAdForm] = useState(false);
   const pendingAdRef = useRef(false);
 
   const handlePostAd = () => {
@@ -1189,20 +1342,7 @@ export default function HomePage() {
     if (pendingAdRef.current) { pendingAdRef.current = false; setShowAdForm(true); }
   };
 
-  const handleAdSuccess = () => {
-    setShowAdForm(false);
-    setRefreshKey(k => k + 1);
-  };
-
-  // ── Refetch lost & found after a successful report ────────────
-  const refetchLostFound = () => {
-    fetch(`${API}/lost-found?limit=8`)
-      .then(r => r.json())
-      .then((d: { items: LostFoundItem[] }) => setLostFound(d.items ?? []))
-      .catch(() => {});
-  };
-
-  // ── Live feed polling ─────────────────────────────────────
+  // ── Live feed polling ──────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -1232,25 +1372,27 @@ export default function HomePage() {
     return () => { cancelled = true; clearInterval(timer); };
   }, [refreshKey]);
 
-  // ── Sponsors ──────────────────────────────────────────────
+  // ── Sponsors ──────────────────────────────────────────────────
   useEffect(() => {
-    fetch(`${API}/sponsors?status=active&limit=5`)
+    fetch(`${API}/sponsors?status=active&limit=10`)
       .then(r => r.json())
-      .then((d: { sponsors: Sponsor[] }) => setSponsors(d.sponsors ?? []))
+      .then((d: { sponsors: SponsorRecord[] }) =>
+        setSponsors((d.sponsors ?? []).sort((a, b) => a.display_order - b.display_order))
+      )
       .catch(() => setSponsors([]))
-      .finally(() => setSponsorLoading(false));
+      .finally(() => setBannerLoading(false));
   }, []);
 
-  // ── Lost & Found ──────────────────────────────────────────
+  // ── Premium notices ────────────────────────────────────────────
   useEffect(() => {
-    fetch(`${API}/lost-found?limit=8`)
+    fetch(`${API}/notices?limit=20`)
       .then(r => r.json())
-      .then((d: { items: LostFoundItem[] }) => setLostFound(d.items ?? []))
-      .catch(() => setLostFound([]))
-      .finally(() => setLfLoading(false));
+      .then((d: { notices: Notice[] }) => setPremiumNotices((d.notices ?? []).filter(n => n.is_premium)))
+      .catch(() => setPremiumNotices([]))
+      .finally(() => setNoticesLoading(false));
   }, []);
 
-  // ── Category counts ───────────────────────────────────────
+  // ── Category counts ────────────────────────────────────────────
   useEffect(() => {
     fetch(`${API}/categories/counts`)
       .then(r => r.json())
@@ -1276,37 +1418,57 @@ export default function HomePage() {
       />
 
       {showAdForm && (
-        <AdPostModal onClose={() => setShowAdForm(false)} onSuccess={handleAdSuccess} />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.5)', backdropFilter: 'blur(4px)' }} onClick={() => setShowAdForm(false)} />
+          <div style={{
+            position: 'relative', background: TOKEN.white,
+            width: '100%', maxWidth: 520,
+            maxHeight: '92vh', overflowY: 'auto',
+            margin: '0 16px',
+            boxShadow: '0 24px 80px rgba(0,0,0,.35)',
+            animation: 'modal-in 0.2s ease',
+          }}>
+            <div style={{ height: 3, background: TOKEN.ink }} />
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '18px 24px 14px',
+              position: 'sticky', top: 0, background: TOKEN.white, zIndex: 1,
+              borderBottom: `1px solid ${TOKEN.border}`,
+            }}>
+              <div>
+                <div style={{ fontFamily: FONT.serif, fontWeight: 900, fontSize: 22, color: TOKEN.ink, lineHeight: 1 }}>Post Your Ad</div>
+                <div style={{ fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.16em', textTransform: 'uppercase', color: TOKEN.ink5, marginTop: 4 }}>Flyers · Classified Advertisement</div>
+              </div>
+              <button onClick={() => setShowAdForm(false)} style={{ background: 'none', border: `1px solid ${TOKEN.border}`, padding: '6px 12px', cursor: 'pointer', color: TOKEN.ink5, fontSize: 14, lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ padding: '20px 24px 32px' }}>
+              <AdForm onSuccess={() => { setShowAdForm(false); setRefreshKey(k => k + 1); }} />
+            </div>
+          </div>
+        </div>
       )}
 
-      {/* Lost & Found modal — opens in-place, no page navigation */}
-      <LostFoundModal
-        open={showLFModal}
-        onClose={() => setShowLFModal(false)}
-        onSuccess={() => {
-          setShowLFModal(false);
-          refetchLostFound();   // carousel updates immediately after submit
-        }}
-      />
-
-      {/* THREE-COLUMN SECTION */}
+      {/* ── THREE-COLUMN SECTION ── */}
       <div style={{
         display: 'grid', gridTemplateColumns: '1fr 1fr 1fr',
         height: 560,
         borderBottom: `1px solid ${TOKEN.border}`,
         background: TOKEN.bg,
       }}>
-        <SponsorsCol
+        {/* Col 1: Sponsors carousel */}
+        <SponsorCol
           sponsors={sponsors}
-          loading={sponsorLoading}
-          onAdvertise={handlePostAd}
+          loading={bannerLoading}
         />
-        <LostFoundCol
-          items={lostFound}
-          loading={lfLoading}
-          onReport={() => setShowLFModal(true)}
-          onViewAll={() => navigate('/lost-found')}
+
+        {/* Col 2: Premium Notices carousel */}
+        <PremiumNoticesCol
+          notices={premiumNotices}
+          loading={noticesLoading}
+          onViewAll={() => navigate('/notices')}
         />
+
+        {/* Col 3: Live Feed — unchanged */}
         <LiveFeedCol
           items={liveFeed}
           loading={feedLoading}
@@ -1332,72 +1494,6 @@ export default function HomePage() {
 
       <div style={{ padding: '24px 52px 32px', background: TOKEN.bg }}>
         <AdList key={`all-${refreshKey}`} refresh={refreshKey} initialCategory="all" />
-      </div>
-
-      {/* Browse by Section */}
-      <div style={{ background: TOKEN.white, borderBottom: `1px solid ${TOKEN.border}` }}>
-        <div style={{ padding: '26px 52px 18px' }}>
-          <div style={{ fontFamily: FONT.mono, fontSize: 9, letterSpacing: '0.18em', textTransform: 'uppercase', color: TOKEN.ink5, marginBottom: 4 }}>Explore</div>
-          <div style={{ fontFamily: FONT.serif, fontWeight: 700, fontSize: 22, color: TOKEN.ink }}>Browse by Section</div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10, padding: '0 52px 26px' }}>
-          {([
-            { value: 'real-estate', path: '/real-estate', label: 'Real Estate', isNP: false },
-            { value: 'jobs',        path: '/jobs',        label: 'Employment',  isNP: false },
-            { value: 'services',    path: '/services',    label: 'Services',    isNP: false },
-            { value: 'matrimonial', path: '/matrimonial', label: 'Matrimonial', isNP: false },
-            { value: 'automobiles', path: '/automobiles', label: 'Automobiles', isNP: false },
-            { value: 'notices',     path: '/notices',     label: 'सूचनाहरू',   isNP: true  },
-          ] as const).map(card => {
-            const count = categoryCounts.find(c => c.value === card.value)?.count ?? 0;
-            return (
-              <button
-                key={card.value}
-                onClick={() => navigate(card.path)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  padding: '15px 16px', textAlign: 'left',
-                  border: `1px solid ${card.isNP ? 'rgba(150,112,26,.28)' : TOKEN.border}`,
-                  borderRadius: 10,
-                  background: card.isNP ? TOKEN.goldx : TOKEN.bg,
-                  cursor: 'pointer', position: 'relative',
-                  transition: 'box-shadow 0.15s, transform 0.15s',
-                }}
-                onMouseEnter={e => {
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 4px 14px rgba(0,0,0,.1)';
-                  (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)';
-                }}
-                onMouseLeave={e => {
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
-                  (e.currentTarget as HTMLButtonElement).style.transform = 'none';
-                }}
-              >
-                <div style={{
-                  position: 'absolute', top: 8, right: 10,
-                  fontFamily: FONT.mono, fontSize: 9, fontWeight: 600,
-                  color: card.isNP ? '#92400E' : TOKEN.ink5,
-                  background: card.isNP ? 'rgba(150,112,26,.12)' : TOKEN.bg2,
-                  borderRadius: 20, padding: '1px 7px',
-                }}>
-                  {count}
-                </div>
-                <div>
-                  <div style={{
-                    fontSize: 13, fontWeight: 600,
-                    fontFamily: card.isNP ? FONT.deva : FONT.sans,
-                    color: card.isNP ? '#92400E' : TOKEN.ink,
-                    marginBottom: 2,
-                  }}>
-                    {card.label}
-                  </div>
-                  <div style={{ fontFamily: FONT.mono, fontSize: 10, color: card.isNP ? 'rgba(146,64,14,.6)' : TOKEN.ink5 }}>
-                    {count} {card.isNP ? 'notices' : 'listings'}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* Advertise CTA */}
@@ -1431,7 +1527,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      <NoticesPreview />
+      {/* Lost & Found section — replaces NoticesPreview */}
+      <LostFoundSection />
     </>
   );
 }

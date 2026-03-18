@@ -438,7 +438,8 @@ function TypeBtn({ t, selected, accent, isObit, onSelect }: {
 
 function buildPreview(form: FormState): Notice {
   return {
-    id: 0, user_id: 0,
+    id: '0',
+    user_id: 0,
     notice_type: form.notice_type as NoticeType,
     notice_status: 'pending',
     display_size: 'large',

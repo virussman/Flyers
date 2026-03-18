@@ -1,10 +1,10 @@
 // ================================================================
 // FILE: frontend/src/components/NoticeCards.tsx
-// All 6 card types — obituary + 4 new celebration designs
+// All card types — obituary (unchanged) + celebration cards
+// redesigned to match obituary dimensions and layout language
 // ================================================================
 
 import type { Notice, NoticeType } from '../types/index';
-
 
 // ── Shared primitives ─────────────────────────────────────────
 
@@ -19,7 +19,7 @@ const FlameIcon = ({ size = 28 }: { size?: number }) => (
 
 type Corner = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 const CornerOrnament = ({ pos, color }: { pos: Corner; color: string }) => {
-  const isTop = pos.startsWith('top');
+  const isTop  = pos.startsWith('top');
   const isLeft = pos.endsWith('Left');
   return (
     <div style={{ position: 'absolute', ...(isTop ? { top: 6 } : { bottom: 6 }), ...(isLeft ? { left: 6 } : { right: 6 }), width: 24, height: 24 }}>
@@ -29,10 +29,13 @@ const CornerOrnament = ({ pos, color }: { pos: Corner; color: string }) => {
 };
 const CORNERS: Corner[] = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
 
-const PaidTag = () => (
-  <div style={{ textAlign: 'center', marginTop: 8, fontSize: 8, color: '#aaa', letterSpacing: '0.15em' }}>
-    विज्ञापन / PAID ADVERTISEMENT
-  </div>
+// Premium golden glow — only shown when is_premium is true
+const PremiumGlow = ({ color = '#c8a84b' }: { color?: string }) => (
+  <div style={{
+    position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+    boxShadow: `0 0 0 1px ${color}55, 0 4px 24px 0 ${color}44, 0 0 48px 0 ${color}22`,
+    borderRadius: 'inherit',
+  }} />
 );
 
 const PhotoCircle = ({ url, size = 90, border = '#8b6914' }: { url?: string | null; size?: number; border?: string }) => (
@@ -41,16 +44,15 @@ const PhotoCircle = ({ url, size = 90, border = '#8b6914' }: { url?: string | nu
   </div>
 );
 
-// ── 1. LARGE OBITUARY (हार्दिक समवेदना) ─────────────────────────
+// ── 1. LARGE OBITUARY — समवेदना (UNCHANGED) ──────────────────────
 
 export function LargeObituaryCard({ notice }: { notice: Notice }) {
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: 380, background: '#fffef9', border: '1px solid #8b6914', boxShadow: 'inset 0 0 0 4px #fffef9, inset 0 0 0 6px #8b6914', position: 'relative', padding: 16 }}>
+    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: 380, background: '#fffef9', border: '1px solid #8b6914', boxShadow: notice.is_premium ? 'inset 0 0 0 4px #fffef9, inset 0 0 0 6px #8b6914, 0 0 0 1px #c8a84b55, 0 4px 24px 0 #c8a84b44' : 'inset 0 0 0 4px #fffef9, inset 0 0 0 6px #8b6914', position: 'relative', padding: 16 }}>
       {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color="#8b6914" />)}
 
       <div style={{ textAlign: 'center', fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 22, fontWeight: 700, color: '#1a1a1a', letterSpacing: '0.02em', marginBottom: 12, borderBottom: '1px solid #8b6914', paddingBottom: 10 }}>
         {notice.title || 'हार्दिक समवेदना'}
-        {notice.is_premium && <span style={{ fontSize: 9, marginLeft: 8, color: '#8b6914', letterSpacing: '0.1em' }}>★ PREMIUM</span>}
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, padding: '0 8px' }}>
@@ -91,16 +93,15 @@ export function LargeObituaryCard({ notice }: { notice: Notice }) {
         <div style={{ fontSize: 22 }}>🏛️</div>
         <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, fontWeight: 700, color: '#1a1a1a', textAlign: 'center', whiteSpace: 'pre-line' }}>{notice.published_by}</div>
       </div>
-      <PaidTag />
     </div>
   );
 }
 
-// ── 2. SMALL OBITUARY (हार्दिक श्रद्धाञ्जली) ────────────────────
+// ── 2. SMALL OBITUARY — श्रद्धाञ्जली (UNCHANGED) ─────────────────
 
 export function SmallObituaryCard({ notice }: { notice: Notice }) {
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: 340, background: '#fffef9', border: '1px solid #8b6914', boxShadow: 'inset 0 0 0 3px #fffef9, inset 0 0 0 5px #8b6914', position: 'relative', padding: '14px 16px' }}>
+    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: 340, background: '#fffef9', border: '1px solid #8b6914', boxShadow: notice.is_premium ? 'inset 0 0 0 3px #fffef9, inset 0 0 0 5px #8b6914, 0 0 0 1px #c8a84b55, 0 4px 24px 0 #c8a84b44' : 'inset 0 0 0 3px #fffef9, inset 0 0 0 5px #8b6914', position: 'relative', padding: '14px 16px' }}>
       {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color="#8b6914" />)}
 
       <div style={{ textAlign: 'center', fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 700, color: '#1a1a1a', marginBottom: 10, borderBottom: '1px solid #8b6914', paddingBottom: 8 }}>
@@ -130,354 +131,377 @@ export function SmallObituaryCard({ notice }: { notice: Notice }) {
       <div style={{ height: 1, background: '#8b6914', opacity: 0.3, margin: '0 8px 10px' }} />
       <div style={{ fontSize: 11, lineHeight: 1.75, color: '#222', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 10 }}>{notice.body_text}</div>
       <div style={{ borderTop: '1px solid #8b6914', paddingTop: 8, fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 11, fontWeight: 700, color: '#1a1a1a', textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{notice.published_by}</div>
-      <PaidTag />
     </div>
   );
 }
 
-// ── 3. WEDDING CARD (शुभ विवाह) ──────────────────────────────────
-// Red/maroon palette · mandala motif · side-by-side circular photos
+// ── Shared celebration card shell ─────────────────────────────
+// Matches obituary: double-border inset, corner ornaments, same padding/widths
 
-const WEDDING_RED = '#8b1a1a';
-const WEDDING_GOLD = '#c8973a';
+interface CelebShellProps {
+  notice: Notice;
+  accent: string;       // primary colour
+  accentLight: string;  // bg tint
+  accentMid: string;    // mid tone for borders/dividers
+  children: React.ReactNode;
+}
+function CelebShell({ notice, accent, accentLight, accentMid, children }: CelebShellProps) {
+  const isLarge = notice.display_size === 'large';
+  const w = isLarge ? 380 : 340;
+  const inset = isLarge ? 4 : 3;
+  const premiumShadow = notice.is_premium
+    ? `, 0 0 0 1px #c8a84b55, 0 4px 28px 0 #c8a84b44, 0 0 52px 0 #c8a84b18`
+    : '';
+  return (
+    <div style={{
+      fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif",
+      width: w,
+      background: accentLight,
+      border: `1px solid ${accent}`,
+      boxShadow: `inset 0 0 0 ${inset}px ${accentLight}, inset 0 0 0 ${inset + 2}px ${accent}${premiumShadow}`,
+      position: 'relative',
+      padding: isLarge ? 16 : '14px 16px',
+    }}>
+      {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color={accentMid} />)}
+      {children}
+    </div>
+  );
+}
+
+// Shared celebration header strip — matches the obituary's title bar style
+function CelebHeader({ title, icon, accent, accentMid }: { title: string; icon: string; accent: string; accentMid: string }) {
+  return (
+    <div style={{
+      textAlign: 'center',
+      fontFamily: "'Noto Sans Devanagari',sans-serif",
+      fontSize: 19,
+      fontWeight: 700,
+      color: '#1a1a1a',
+      letterSpacing: '0.02em',
+      marginBottom: 12,
+      borderBottom: `1px solid ${accent}`,
+      paddingBottom: 10,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    }}>
+      <span style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>
+      {title}
+    </div>
+  );
+}
+
+// Shared date/venue info block — mirrors kriya box from obituary
+function CelebDateBox({ notice, accent, accentLight }: { notice: Notice; accent: string; accentLight: string }) {
+  if (!notice.event_date_bs && !notice.event_venue) return null;
+  return (
+    <div style={{
+      background: accentLight,
+      border: `1px solid ${accent}80`,
+      padding: '8px 12px',
+      marginBottom: 12,
+      fontSize: 11,
+      fontFamily: "'Noto Sans Devanagari',sans-serif",
+      lineHeight: 1.7,
+      color: '#333',
+    }}>
+      {notice.event_date_bs && (
+        <div style={{ fontWeight: 700, marginBottom: 1 }}>
+          📅 {notice.event_date_bs}{notice.event_date_ad ? ` (${notice.event_date_ad})` : ''}
+        </div>
+      )}
+      {notice.event_time  && <div>🕐 {notice.event_time}</div>}
+      {notice.event_venue && <div>📍 {notice.event_venue}</div>}
+    </div>
+  );
+}
+
+// Shared publisher footer — mirrors obituary's borderTop footer
+function CelebFooter({ notice, accent }: { notice: Notice; accent: string }) {
+  return (
+    <div style={{ borderTop: `1px solid ${accent}60`, paddingTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+      <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 11, fontWeight: 700, color: '#1a1a1a', textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+        {notice.published_by}
+      </div>
+      {notice.contact_phone && (
+        <div style={{ fontSize: 10, color: accent, fontFamily: 'monospace' }}>📞 {notice.contact_phone}</div>
+      )}
+    </div>
+  );
+}
+
+// Shared divider
+function Divider({ color }: { color: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 12px' }}>
+      <div style={{ flex: 1, height: 1, background: color, opacity: 0.25 }} />
+      <div style={{ color, fontSize: 10, opacity: 0.6 }}>✦ ✦ ✦</div>
+      <div style={{ flex: 1, height: 1, background: color, opacity: 0.25 }} />
+    </div>
+  );
+}
+
+// ── 3. WEDDING CARD — शुभ विवाह ──────────────────────────────────
+// Deep crimson + antique gold · matches obituary gravitas
+
+const W_RED  = '#7b1c1c';
+const W_GOLD = '#b8892e';
+const W_BG   = '#fff9f6';
 
 export function WeddingCard({ notice }: { notice: Notice }) {
-  const w = notice.display_size === 'large' ? 420 : 360;
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: w, background: '#fff9f5', border: `1px solid ${WEDDING_RED}`, boxShadow: `inset 0 0 0 3px #fff9f5, inset 0 0 0 5px ${WEDDING_RED}`, position: 'relative', padding: '16px 18px' }}>
-      {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color={WEDDING_RED} />)}
+    <CelebShell notice={notice} accent={W_RED} accentLight={W_BG} accentMid={W_GOLD}>
+      <CelebHeader title={notice.title || 'शुभ विवाह'} icon="❦" accent={W_RED} accentMid={W_GOLD} />
 
-      {/* Top mangal strip */}
-      <div style={{ background: `linear-gradient(90deg, ${WEDDING_RED}, #a52020, ${WEDDING_RED})`, color: '#fff', textAlign: 'center', padding: '5px 0', marginBottom: 12, fontSize: 13, letterSpacing: '0.3em', fontFamily: "'Noto Sans Devanagari',sans-serif" }}>
-        ॥ शुभ विवाह ॥
-      </div>
-
-      {/* Title */}
-      <div style={{ textAlign: 'center', fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 700, color: WEDDING_RED, marginBottom: 14, letterSpacing: '0.02em' }}>
-        {notice.title || 'विवाह शुभकामना'}
-        {notice.is_premium && <span style={{ fontSize: 9, marginLeft: 6, color: WEDDING_GOLD }}>★ PREMIUM</span>}
-      </div>
-
-      {/* Side-by-side photos */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16, marginBottom: 14 }}>
-        <div style={{ textAlign: 'center' }}>
-          <PhotoCircle url={notice.person1_photo_url} size={80} border={WEDDING_RED} />
-          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 14, fontWeight: 700, color: '#1a1a1a', marginTop: 6 }}>{notice.person1_name || 'वर'}</div>
-          <div style={{ fontSize: 9, color: WEDDING_RED, letterSpacing: '0.08em', fontWeight: 600 }}>वर</div>
+      {/* Side-by-side photos — same column symmetry as obituary flame+photo+flame */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, padding: '0 8px' }}>
+        <div style={{ textAlign: 'center', minWidth: 80 }}>
+          <PhotoCircle url={notice.person1_photo_url} size={80} border={W_RED} />
+          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 13, fontWeight: 700, color: '#1a1a1a', marginTop: 6, lineHeight: 1.3 }}>
+            {notice.person1_name || 'वर'}
+          </div>
+          <div style={{ fontSize: 9, color: W_RED, letterSpacing: '0.08em', fontWeight: 600, marginTop: 2 }}>वर</div>
         </div>
 
-        {/* Mangal symbol center */}
-        <div style={{ textAlign: 'center', padding: '0 8px' }}>
-          <div style={{ fontSize: 28, color: WEDDING_RED, lineHeight: 1 }}>❦</div>
-          <div style={{ fontSize: 10, color: WEDDING_GOLD, letterSpacing: '0.2em', marginTop: 2 }}>✦</div>
+        {/* Centre symbol */}
+        <div style={{ textAlign: 'center', flex: 1, paddingTop: 24 }}>
+          <div style={{ fontSize: 26, color: W_RED, lineHeight: 1 }}>॥</div>
+          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, color: W_GOLD, marginTop: 4, fontWeight: 700, letterSpacing: '0.06em' }}>विवाह</div>
+          <div style={{ fontSize: 11, color: W_GOLD, marginTop: 2, opacity: 0.7 }}>✦</div>
         </div>
 
-        <div style={{ textAlign: 'center' }}>
-          <PhotoCircle url={notice.person2_photo_url} size={80} border={WEDDING_RED} />
-          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 14, fontWeight: 700, color: '#1a1a1a', marginTop: 6 }}>{notice.person2_name || 'वधु'}</div>
-          <div style={{ fontSize: 9, color: WEDDING_RED, letterSpacing: '0.08em', fontWeight: 600 }}>वधु</div>
+        <div style={{ textAlign: 'center', minWidth: 80 }}>
+          <PhotoCircle url={notice.person2_photo_url} size={80} border={W_RED} />
+          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 13, fontWeight: 700, color: '#1a1a1a', marginTop: 6, lineHeight: 1.3 }}>
+            {notice.person2_name || 'वधु'}
+          </div>
+          <div style={{ fontSize: 9, color: W_RED, letterSpacing: '0.08em', fontWeight: 600, marginTop: 2 }}>वधु</div>
         </div>
       </div>
 
-      {/* Divider */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 12px' }}>
-        <div style={{ flex: 1, height: 1, background: WEDDING_RED, opacity: 0.25 }} />
-        <div style={{ color: WEDDING_RED, fontSize: 12, opacity: 0.5 }}>✿ ✿ ✿</div>
-        <div style={{ flex: 1, height: 1, background: WEDDING_RED, opacity: 0.25 }} />
-      </div>
+      <div style={{ height: 1, background: W_RED, opacity: 0.2, margin: '0 16px 12px' }} />
 
-      {/* Date/venue strip */}
-      {(notice.event_date_bs || notice.event_venue) && (
-        <div style={{ background: `linear-gradient(135deg, ${WEDDING_RED}, #a52020)`, color: '#fff', textAlign: 'center', padding: '8px 14px', marginBottom: 12, fontFamily: "'Noto Sans Devanagari',sans-serif", borderRadius: 2 }}>
-          {notice.event_date_bs && <div style={{ fontSize: 13, fontWeight: 700 }}>{notice.event_date_bs}</div>}
-          {notice.event_date_ad && <div style={{ fontSize: 10, opacity: 0.85 }}>({notice.event_date_ad})</div>}
-          {notice.event_time && <div style={{ fontSize: 11, marginTop: 2 }}>{notice.event_time}</div>}
-          {notice.event_venue && <div style={{ fontSize: 11, marginTop: 4, fontWeight: 600 }}>📍 {notice.event_venue}</div>}
-        </div>
-      )}
+      <CelebDateBox notice={notice} accent={W_RED} accentLight={`${W_RED}08`} />
 
-      {/* Body */}
       {notice.body_text && (
-        <div style={{ fontSize: 11, lineHeight: 1.75, color: '#333', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12 }}>{notice.body_text}</div>
-      )}
-
-      {/* Blessings */}
-      {notice.blessings_from && (
-        <div style={{ background: '#fff3f0', border: `1px solid ${WEDDING_RED}20`, padding: '8px 12px', marginBottom: 10 }}>
-          <div style={{ fontSize: 9, color: WEDDING_RED, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>आशीर्वाद दिनुहुनेछ</div>
-          <div style={{ fontSize: 11, lineHeight: 1.7, color: '#444', fontFamily: "'Noto Sans Devanagari',sans-serif", whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
+        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#222', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12, padding: '0 4px' }}>
+          {notice.body_text}
         </div>
       )}
 
-      <div style={{ borderTop: `1px solid ${WEDDING_RED}40`, paddingTop: 8, fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, fontWeight: 700, color: '#1a1a1a', textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{notice.published_by}</div>
-      {notice.contact_phone && <div style={{ textAlign: 'center', fontSize: 10, color: WEDDING_RED, marginTop: 4, fontFamily: 'monospace' }}>📞 {notice.contact_phone}</div>}
-      <PaidTag />
-    </div>
+      {notice.blessings_from && (
+        <div style={{ background: `${W_RED}07`, border: `1px solid ${W_GOLD}50`, padding: '8px 12px', marginBottom: 12, fontSize: 11, fontFamily: "'Noto Sans Devanagari',sans-serif", lineHeight: 1.7, color: '#333' }}>
+          <div style={{ fontWeight: 700, color: W_RED, marginBottom: 2, fontSize: 10 }}>आशीर्वाद दिनुहुनेछ:</div>
+          <div style={{ whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
+        </div>
+      )}
+
+      <CelebFooter notice={notice} accent={W_RED} />
+    </CelebShell>
   );
 }
 
-// ── 4. GRADUATION CARD (उत्तीर्णता शुभकामना) ────────────────────
-// Deep navy/blue · graduation cap icon · academic feel
+// ── 4. GRADUATION CARD — उत्तीर्णता ──────────────────────────────
+// Deep navy + warm gold · academic gravitas matching obituary weight
 
-const GRAD_NAVY = '#1a3a5c';
-const GRAD_GOLD = '#c8973a';
+const G_NAVY = '#1a3356';
+const G_GOLD = '#b8892e';
+const G_BG   = '#f5f7ff';
 
 export function GraduationCard({ notice }: { notice: Notice }) {
-  const w = notice.display_size === 'large' ? 400 : 340;
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: w, background: '#f5f8ff', border: `1px solid ${GRAD_NAVY}`, boxShadow: `inset 0 0 0 3px #f5f8ff, inset 0 0 0 5px ${GRAD_NAVY}`, position: 'relative', padding: '16px 18px' }}>
-      {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color={GRAD_GOLD} />)}
+    <CelebShell notice={notice} accent={G_NAVY} accentLight={G_BG} accentMid={G_GOLD}>
+      <CelebHeader title={notice.title || 'उत्तीर्णता शुभकामना'} icon="🎓" accent={G_NAVY} accentMid={G_GOLD} />
 
-      {/* Header banner */}
-      <div style={{ background: GRAD_NAVY, color: '#fff', textAlign: 'center', padding: '10px 0', marginBottom: 14 }}>
-        <div style={{ fontSize: 24, lineHeight: 1, marginBottom: 4 }}>🎓</div>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 16, fontWeight: 700, letterSpacing: '0.03em' }}>
-          {notice.title || 'उत्तीर्णता शुभकामना'}
+      {/* Single photo — centred like obituary's centre photo column */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, padding: '0 8px' }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ textAlign: 'center' }}>
+          <PhotoCircle url={notice.person1_photo_url} size={100} border={G_NAVY} />
+          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginTop: 8, lineHeight: 1.2 }}>
+            {notice.person1_name}
+          </div>
+          {notice.person2_name && (
+            <div style={{ fontSize: 11, color: G_NAVY, marginTop: 2, fontStyle: 'italic' }}>{notice.person2_name}</div>
+          )}
         </div>
-        {notice.is_premium && <div style={{ fontSize: 9, color: GRAD_GOLD, marginTop: 2, letterSpacing: '0.1em' }}>★ PREMIUM</div>}
+        <div style={{ flex: 1 }} />
       </div>
 
-      {/* Photo */}
-      <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <PhotoCircle url={notice.person1_photo_url} size={85} border={GRAD_NAVY} />
-      </div>
+      <div style={{ height: 1, background: G_NAVY, opacity: 0.2, margin: '0 16px 12px' }} />
 
-      {/* Name */}
-      <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 800, color: GRAD_NAVY }}>{notice.person1_name}</div>
-      </div>
-
-      {/* Gold date strip */}
-      {(notice.event_date_bs || notice.event_venue) && (
-        <div style={{ background: GRAD_GOLD, color: '#fff', textAlign: 'center', padding: '7px 12px', marginBottom: 12, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>
-          {notice.event_date_bs && <div style={{ fontSize: 12, fontWeight: 700 }}>{notice.event_date_bs}</div>}
-          {notice.event_venue && <div style={{ fontSize: 10, marginTop: 2 }}>{notice.event_venue}</div>}
-        </div>
-      )}
-
-      {/* Divider */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 10px' }}>
-        <div style={{ flex: 1, height: 1, background: GRAD_NAVY, opacity: 0.2 }} />
-        <div style={{ color: GRAD_GOLD, fontSize: 10 }}>✦ ✦ ✦</div>
-        <div style={{ flex: 1, height: 1, background: GRAD_NAVY, opacity: 0.2 }} />
-      </div>
+      <CelebDateBox notice={notice} accent={G_NAVY} accentLight={`${G_NAVY}08`} />
 
       {notice.body_text && (
-        <div style={{ fontSize: 11, lineHeight: 1.75, color: '#334', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12 }}>{notice.body_text}</div>
+        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#222', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12, padding: '0 4px' }}>
+          {notice.body_text}
+        </div>
       )}
 
       {notice.blessings_from && (
-        <div style={{ background: '#eef2ff', border: `1px solid ${GRAD_NAVY}20`, padding: '8px 12px', marginBottom: 10 }}>
-          <div style={{ fontSize: 9, color: GRAD_NAVY, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>आशीर्वाद दिनुहुनेछ</div>
-          <div style={{ fontSize: 11, lineHeight: 1.7, color: '#334', fontFamily: "'Noto Sans Devanagari',sans-serif", whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
+        <div style={{ background: `${G_NAVY}07`, border: `1px solid ${G_GOLD}50`, padding: '8px 12px', marginBottom: 12, fontSize: 11, fontFamily: "'Noto Sans Devanagari',sans-serif", lineHeight: 1.7, color: '#333' }}>
+          <div style={{ fontWeight: 700, color: G_NAVY, marginBottom: 2, fontSize: 10 }}>आशीर्वाद दिनुहुनेछ:</div>
+          <div style={{ whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
         </div>
       )}
 
-      <div style={{ borderTop: `1px solid ${GRAD_NAVY}30`, paddingTop: 8, fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, fontWeight: 700, color: GRAD_NAVY, textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{notice.published_by}</div>
-      <PaidTag />
-    </div>
+      <CelebFooter notice={notice} accent={G_NAVY} />
+    </CelebShell>
   );
 }
 
-// ── 5. BIRTH CARD (शिशु जन्म शुभकामना) ─────────────────────────
-// Soft pink/mint · baby footprint · warm pastel
+// ── 5. BIRTH CARD — शिशु जन्म ────────────────────────────────────
+// Sage green + warm ivory · calm and tender, not childishly pink
 
-const BIRTH_PINK = '#c2185b';
-const BIRTH_MINT = '#00897b';
+const B_GREEN = '#2d5a3d';
+const B_SAGE  = '#7a9e7e';
+const B_BG    = '#f5faf6';
 
 export function BirthCard({ notice }: { notice: Notice }) {
-  const w = notice.display_size === 'large' ? 400 : 340;
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: w, background: '#fff5f8', border: `1px solid ${BIRTH_PINK}50`, boxShadow: `inset 0 0 0 3px #fff5f8, inset 0 0 0 5px ${BIRTH_PINK}50`, position: 'relative', padding: '16px 18px' }}>
-      {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color={BIRTH_PINK} />)}
+    <CelebShell notice={notice} accent={B_GREEN} accentLight={B_BG} accentMid={B_SAGE}>
+      <CelebHeader title={notice.title || 'शिशु जन्म शुभकामना'} icon="👶" accent={B_GREEN} accentMid={B_SAGE} />
 
-      {/* Top strip */}
-      <div style={{ background: `linear-gradient(90deg, ${BIRTH_PINK}, #e91e8c, ${BIRTH_PINK})`, color: '#fff', textAlign: 'center', padding: '8px 0', marginBottom: 14 }}>
-        <div style={{ fontSize: 20, lineHeight: 1, marginBottom: 2 }}>👶</div>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 15, fontWeight: 700, letterSpacing: '0.03em' }}>
-          {notice.title || 'शिशु जन्म शुभकामना'}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, padding: '0 8px' }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ textAlign: 'center' }}>
+          <PhotoCircle url={notice.person1_photo_url} size={100} border={B_GREEN} />
+          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginTop: 8, lineHeight: 1.2 }}>
+            {notice.person1_name}
+          </div>
         </div>
+        <div style={{ flex: 1 }} />
       </div>
 
-      {/* Photo */}
-      <div style={{ textAlign: 'center', marginBottom: 10 }}>
-        <PhotoCircle url={notice.person1_photo_url} size={80} border={BIRTH_PINK} />
-      </div>
+      <div style={{ height: 1, background: B_GREEN, opacity: 0.2, margin: '0 16px 12px' }} />
 
-      {/* Baby name */}
-      <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 800, color: BIRTH_PINK }}>{notice.person1_name}</div>
-        {notice.is_premium && <div style={{ fontSize: 9, color: BIRTH_MINT, marginTop: 2, letterSpacing: '0.1em' }}>★ PREMIUM</div>}
-      </div>
-
-      {/* Date strip */}
-      {(notice.event_date_bs || notice.event_venue) && (
-        <div style={{ background: `${BIRTH_PINK}15`, border: `1px solid ${BIRTH_PINK}30`, textAlign: 'center', padding: '7px 12px', marginBottom: 12, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>
-          {notice.event_date_bs && <div style={{ fontSize: 12, fontWeight: 700, color: BIRTH_PINK }}>📅 {notice.event_date_bs}</div>}
-          {notice.event_date_ad && <div style={{ fontSize: 10, color: '#777', marginTop: 1 }}>({notice.event_date_ad})</div>}
-          {notice.event_venue && <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>📍 {notice.event_venue}</div>}
-        </div>
-      )}
-
-      {/* Mint divider */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 10px' }}>
-        <div style={{ flex: 1, height: 1, background: BIRTH_MINT, opacity: 0.3 }} />
-        <div style={{ color: BIRTH_MINT, fontSize: 12 }}>✿ ✿ ✿</div>
-        <div style={{ flex: 1, height: 1, background: BIRTH_MINT, opacity: 0.3 }} />
-      </div>
+      <CelebDateBox notice={notice} accent={B_GREEN} accentLight={`${B_GREEN}08`} />
 
       {notice.body_text && (
-        <div style={{ fontSize: 11, lineHeight: 1.75, color: '#333', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12 }}>{notice.body_text}</div>
+        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#222', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12, padding: '0 4px' }}>
+          {notice.body_text}
+        </div>
       )}
 
       {notice.blessings_from && (
-        <div style={{ background: `${BIRTH_MINT}10`, border: `1px solid ${BIRTH_MINT}30`, padding: '8px 12px', marginBottom: 10 }}>
-          <div style={{ fontSize: 9, color: BIRTH_MINT, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>परिवारजन</div>
-          <div style={{ fontSize: 11, lineHeight: 1.7, color: '#333', fontFamily: "'Noto Sans Devanagari',sans-serif", whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
+        <div style={{ background: `${B_GREEN}07`, border: `1px solid ${B_SAGE}60`, padding: '8px 12px', marginBottom: 12, fontSize: 11, fontFamily: "'Noto Sans Devanagari',sans-serif", lineHeight: 1.7, color: '#333' }}>
+          <div style={{ fontWeight: 700, color: B_GREEN, marginBottom: 2, fontSize: 10 }}>परिवारजन:</div>
+          <div style={{ whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
         </div>
       )}
 
-      <div style={{ borderTop: `1px solid ${BIRTH_PINK}30`, paddingTop: 8, fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, fontWeight: 700, color: '#1a1a1a', textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{notice.published_by}</div>
-      {notice.contact_phone && <div style={{ textAlign: 'center', fontSize: 10, color: BIRTH_PINK, marginTop: 4, fontFamily: 'monospace' }}>📞 {notice.contact_phone}</div>}
-      <PaidTag />
-    </div>
+      <CelebFooter notice={notice} accent={B_GREEN} />
+    </CelebShell>
   );
 }
 
-// ── 6. BUSINESS CARD (शुभ उद्घाटन) ──────────────────────────────
-// Dark green · professional · ribbon/ribbon motif
+// ── 6. BUSINESS CARD — शुभ उद्घाटन ──────────────────────────────
+// Deep forest green + brass gold · formal and commercial
 
-const BIZ_GREEN = '#1b5e20';
-const BIZ_GOLD  = '#f9a825';
+const BZ_GREEN = '#1c3d1c';
+const BZ_BRASS = '#a07830';
+const BZ_BG    = '#f4f8f4';
 
 export function BusinessCard({ notice }: { notice: Notice }) {
-  const w = notice.display_size === 'large' ? 420 : 360;
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: w, background: '#f1f8f1', border: `1px solid ${BIZ_GREEN}`, boxShadow: `inset 0 0 0 3px #f1f8f1, inset 0 0 0 5px ${BIZ_GREEN}`, position: 'relative', padding: '16px 18px' }}>
-      {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color={BIZ_GOLD} />)}
+    <CelebShell notice={notice} accent={BZ_GREEN} accentLight={BZ_BG} accentMid={BZ_BRASS}>
+      <CelebHeader title={notice.title || 'शुभ उद्घाटन'} icon="🎊" accent={BZ_GREEN} accentMid={BZ_BRASS} />
 
-      {/* Header */}
-      <div style={{ background: BIZ_GREEN, color: '#fff', textAlign: 'center', padding: '10px 14px', marginBottom: 14 }}>
-        <div style={{ fontSize: 20, lineHeight: 1, marginBottom: 4 }}>🎊</div>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 16, fontWeight: 700, letterSpacing: '0.02em' }}>
-          {notice.title || 'शुभ उद्घाटन'}
-        </div>
-        {notice.is_premium && <div style={{ fontSize: 9, color: BIZ_GOLD, marginTop: 2, letterSpacing: '0.1em' }}>★ PREMIUM</div>}
-      </div>
-
-      {/* Business name / person */}
       {notice.person1_name && (
-        <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          {notice.person1_photo_url && <PhotoCircle url={notice.person1_photo_url} size={80} border={BIZ_GREEN} />}
-          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 17, fontWeight: 800, color: BIZ_GREEN, marginTop: notice.person1_photo_url ? 8 : 0 }}>{notice.person1_name}</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, padding: '0 8px' }}>
+          <div style={{ flex: 1 }} />
+          <div style={{ textAlign: 'center' }}>
+            {notice.person1_photo_url && <PhotoCircle url={notice.person1_photo_url} size={90} border={BZ_GREEN} />}
+            <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 17, fontWeight: 800, color: '#1a1a1a', marginTop: notice.person1_photo_url ? 8 : 0, lineHeight: 1.2 }}>
+              {notice.person1_name}
+            </div>
+            {notice.person2_name && (
+              <div style={{ fontSize: 11, color: BZ_BRASS, marginTop: 2, fontStyle: 'italic' }}>{notice.person2_name}</div>
+            )}
+          </div>
+          <div style={{ flex: 1 }} />
         </div>
       )}
 
-      {/* Gold ribbon date/venue */}
-      {(notice.event_date_bs || notice.event_venue) && (
-        <div style={{ background: BIZ_GOLD, color: '#1a1a1a', textAlign: 'center', padding: '8px 14px', marginBottom: 12, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>
-          {notice.event_date_bs && <div style={{ fontSize: 13, fontWeight: 700 }}>📅 {notice.event_date_bs}</div>}
-          {notice.event_date_ad && <div style={{ fontSize: 10, color: '#555', marginTop: 1 }}>({notice.event_date_ad})</div>}
-          {notice.event_time && <div style={{ fontSize: 11, marginTop: 2 }}>🕐 {notice.event_time}</div>}
-          {notice.event_venue && <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4 }}>📍 {notice.event_venue}</div>}
-        </div>
-      )}
+      <div style={{ height: 1, background: BZ_GREEN, opacity: 0.2, margin: '0 16px 12px' }} />
 
-      {/* Divider */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 10px' }}>
-        <div style={{ flex: 1, height: 1, background: BIZ_GREEN, opacity: 0.2 }} />
-        <div style={{ color: BIZ_GOLD, fontSize: 10 }}>✦ ✦ ✦</div>
-        <div style={{ flex: 1, height: 1, background: BIZ_GREEN, opacity: 0.2 }} />
-      </div>
+      <CelebDateBox notice={notice} accent={BZ_GREEN} accentLight={`${BZ_GREEN}08`} />
 
       {notice.body_text && (
-        <div style={{ fontSize: 11, lineHeight: 1.75, color: '#1a2a1a', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12 }}>{notice.body_text}</div>
+        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#1a2a1a', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12, padding: '0 4px' }}>
+          {notice.body_text}
+        </div>
       )}
 
       {notice.blessings_from && (
-        <div style={{ background: `${BIZ_GREEN}10`, border: `1px solid ${BIZ_GREEN}20`, padding: '8px 12px', marginBottom: 10 }}>
-          <div style={{ fontSize: 9, color: BIZ_GREEN, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>आमन्त्रण</div>
-          <div style={{ fontSize: 11, lineHeight: 1.7, color: '#1a2a1a', fontFamily: "'Noto Sans Devanagari',sans-serif", whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
+        <div style={{ background: `${BZ_GREEN}07`, border: `1px solid ${BZ_BRASS}50`, padding: '8px 12px', marginBottom: 12, fontSize: 11, fontFamily: "'Noto Sans Devanagari',sans-serif", lineHeight: 1.7, color: '#333' }}>
+          <div style={{ fontWeight: 700, color: BZ_GREEN, marginBottom: 2, fontSize: 10 }}>आमन्त्रण:</div>
+          <div style={{ whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
         </div>
       )}
 
-      <div style={{ borderTop: `1px solid ${BIZ_GREEN}30`, paddingTop: 8, fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, fontWeight: 700, color: BIZ_GREEN, textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{notice.published_by}</div>
-      {notice.contact_phone && <div style={{ textAlign: 'center', fontSize: 10, color: BIZ_GREEN, marginTop: 4, fontFamily: 'monospace' }}>📞 {notice.contact_phone}</div>}
-      <PaidTag />
-    </div>
+      <CelebFooter notice={notice} accent={BZ_GREEN} />
+    </CelebShell>
   );
 }
 
-// ── 7. BRATABANDHA CARD (व्रतबन्ध शुभकामना) ────────────────────
-// Saffron/orange · sacred thread ceremony · traditional
+// ── 7. BRATABANDHA CARD — व्रतबन्ध ──────────────────────────────
+// Deep saffron-ochre + warm cream · sacred and traditional
 
-const BRATA_SAFFRON = '#bf6000';
-const BRATA_CREAM   = '#fff8ee';
+const BR_OCHRE  = '#9c5a00';
+const BR_WARM   = '#c8832a';
+const BR_BG     = '#fffaf2';
 
 export function BratabandhaCard({ notice }: { notice: Notice }) {
-  const w = notice.display_size === 'large' ? 400 : 340;
   return (
-    <div style={{ fontFamily: "'Mukta','Noto Sans Devanagari',Arial,sans-serif", width: w, background: BRATA_CREAM, border: `1px solid ${BRATA_SAFFRON}`, boxShadow: `inset 0 0 0 3px ${BRATA_CREAM}, inset 0 0 0 5px ${BRATA_SAFFRON}`, position: 'relative', padding: '16px 18px' }}>
-      {CORNERS.map(pos => <CornerOrnament key={pos} pos={pos} color={BRATA_SAFFRON} />)}
+    <CelebShell notice={notice} accent={BR_OCHRE} accentLight={BR_BG} accentMid={BR_WARM}>
+      <CelebHeader title={notice.title || 'व्रतबन्ध शुभकामना'} icon="🪔" accent={BR_OCHRE} accentMid={BR_WARM} />
 
-      {/* Saffron header */}
-      <div style={{ background: `linear-gradient(90deg, ${BRATA_SAFFRON}, #d4700a, ${BRATA_SAFFRON})`, color: '#fff', textAlign: 'center', padding: '8px 0', marginBottom: 14 }}>
-        <div style={{ fontSize: 18, lineHeight: 1, marginBottom: 3 }}>🪔</div>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 16, fontWeight: 700 }}>
-          {notice.title || 'व्रतबन्ध शुभकामना'}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, padding: '0 8px' }}>
+        <div style={{ flex: 1 }} />
+        <div style={{ textAlign: 'center' }}>
+          <PhotoCircle url={notice.person1_photo_url} size={100} border={BR_OCHRE} />
+          <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 18, fontWeight: 800, color: '#1a1a1a', marginTop: 8, lineHeight: 1.2 }}>
+            {notice.person1_name}
+          </div>
         </div>
-        {notice.is_premium && <div style={{ fontSize: 9, color: '#ffe082', marginTop: 2 }}>★ PREMIUM</div>}
+        <div style={{ flex: 1 }} />
       </div>
 
-      {/* Photo */}
-      <div style={{ textAlign: 'center', marginBottom: 10 }}>
-        <PhotoCircle url={notice.person1_photo_url} size={80} border={BRATA_SAFFRON} />
+      {/* Sacred divider with ॐ — matches obituary's gold rule */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 16px 12px' }}>
+        <div style={{ flex: 1, height: 1, background: BR_OCHRE, opacity: 0.25 }} />
+        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 14, color: BR_OCHRE, opacity: 0.7 }}>ॐ</div>
+        <div style={{ flex: 1, height: 1, background: BR_OCHRE, opacity: 0.25 }} />
       </div>
 
-      {/* Name */}
-      <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 17, fontWeight: 800, color: BRATA_SAFFRON }}>{notice.person1_name}</div>
-      </div>
-
-      {/* Date strip */}
-      {(notice.event_date_bs || notice.event_venue) && (
-        <div style={{ background: `${BRATA_SAFFRON}15`, border: `1px solid ${BRATA_SAFFRON}40`, textAlign: 'center', padding: '7px 12px', marginBottom: 12, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>
-          {notice.event_date_bs && <div style={{ fontSize: 12, fontWeight: 700, color: BRATA_SAFFRON }}>{notice.event_date_bs}</div>}
-          {notice.event_time && <div style={{ fontSize: 10, color: '#555', marginTop: 1 }}>{notice.event_time}</div>}
-          {notice.event_venue && <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>📍 {notice.event_venue}</div>}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 10px' }}>
-        <div style={{ flex: 1, height: 1, background: BRATA_SAFFRON, opacity: 0.2 }} />
-        <div style={{ color: BRATA_SAFFRON, fontSize: 12 }}>ॐ</div>
-        <div style={{ flex: 1, height: 1, background: BRATA_SAFFRON, opacity: 0.2 }} />
-      </div>
+      <CelebDateBox notice={notice} accent={BR_OCHRE} accentLight={`${BR_OCHRE}08`} />
 
       {notice.body_text && (
-        <div style={{ fontSize: 11, lineHeight: 1.75, color: '#2a1a00', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12 }}>{notice.body_text}</div>
+        <div style={{ fontSize: 11, lineHeight: 1.8, color: '#2a1800', textAlign: 'justify', fontFamily: "'Noto Sans Devanagari',sans-serif", marginBottom: 12, padding: '0 4px' }}>
+          {notice.body_text}
+        </div>
       )}
 
       {notice.blessings_from && (
-        <div style={{ background: `${BRATA_SAFFRON}10`, padding: '8px 12px', marginBottom: 10, border: `1px solid ${BRATA_SAFFRON}25` }}>
-          <div style={{ fontSize: 9, color: BRATA_SAFFRON, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, fontFamily: "'Noto Sans Devanagari',sans-serif" }}>आशीर्वाद दिनुहुनेछ</div>
-          <div style={{ fontSize: 11, lineHeight: 1.7, color: '#2a1a00', fontFamily: "'Noto Sans Devanagari',sans-serif", whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
+        <div style={{ background: `${BR_OCHRE}07`, border: `1px solid ${BR_WARM}50`, padding: '8px 12px', marginBottom: 12, fontSize: 11, fontFamily: "'Noto Sans Devanagari',sans-serif", lineHeight: 1.7, color: '#2a1800' }}>
+          <div style={{ fontWeight: 700, color: BR_OCHRE, marginBottom: 2, fontSize: 10 }}>आशीर्वाद दिनुहुनेछ:</div>
+          <div style={{ whiteSpace: 'pre-line' }}>{notice.blessings_from}</div>
         </div>
       )}
 
-      <div style={{ borderTop: `1px solid ${BRATA_SAFFRON}30`, paddingTop: 8, fontFamily: "'Noto Sans Devanagari',sans-serif", fontSize: 12, fontWeight: 700, color: BRATA_SAFFRON, textAlign: 'center', lineHeight: 1.6, whiteSpace: 'pre-line' }}>{notice.published_by}</div>
-      <PaidTag />
-    </div>
+      <CelebFooter notice={notice} accent={BR_OCHRE} />
+    </CelebShell>
   );
 }
 
-// ── Router: pick the right card ───────────────────────────────
+// ── Router ────────────────────────────────────────────────────
 
 const OBITUARY_TYPES: NoticeType[] = ['samvedana', 'shraddhanjali'];
 
 export function NoticeCard({ notice }: { notice: Notice }) {
   const { notice_type, display_size } = notice;
-
   if (OBITUARY_TYPES.includes(notice_type)) {
     if (notice_type === 'samvedana' || display_size === 'large') return <LargeObituaryCard notice={notice} />;
     return <SmallObituaryCard notice={notice} />;
@@ -487,7 +511,7 @@ export function NoticeCard({ notice }: { notice: Notice }) {
   if (notice_type === 'birth')       return <BirthCard notice={notice} />;
   if (notice_type === 'business')    return <BusinessCard notice={notice} />;
   if (notice_type === 'bratabandha') return <BratabandhaCard notice={notice} />;
-  return <WeddingCard notice={notice} />; // fallback
+  return <WeddingCard notice={notice} />;
 }
 
 export default NoticeCard;

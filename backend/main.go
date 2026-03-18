@@ -37,25 +37,45 @@ func loadEnv(filename string) {
 	}
 }
 
-// corsMiddleware allows any localhost origin (covers 5173, 5174, 3000, etc.)
+// corsMiddleware handles CORS for production with strict origin validation
 func corsMiddleware(next http.Handler) http.Handler {
+	// Define allowed origins - UPDATE THESE FOR YOUR DOMAINS
+	allowedOrigins := map[string]bool{
+		"https://flyers.com":      true,
+		"https://www.flyers.com":  true,
+		"https://app.flyers.com":  true,
+		"http://localhost:5173":   true, // Vite dev server
+		"http://localhost:5174":   true, // Vite dev server alternative
+		"http://localhost:3000":   true, // Alternative dev port
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 
-		// Allow any localhost origin regardless of port
-		if strings.HasPrefix(origin, "http://localhost:") {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		}
-
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
-
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+		// Handle same-origin requests (no Origin header)
+		if origin == "" {
+			next.ServeHTTP(w, r)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		// Check if origin is allowed
+		if allowedOrigins[origin] {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		} else {
+			// Reject unauthorized origins
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
 	})
 }
 
@@ -65,7 +85,7 @@ func main() {
 
 	db, err := config.ConnectDB()
 	if err != nil {
-		log.Fatal("❌ Database connection failed:", err)
+		log.Fatal("Database connection failed:", err)
 	}
 	defer db.Close()
 
@@ -74,11 +94,11 @@ func main() {
 	db.QueryRow("SELECT current_database()").Scan(&currentDB)
 	log.Printf("MAIN: Using database: %s", currentDB)
 
-	// ✅ ADD CLOUDINARY CHECK HERE — after DB, before routes
+	// Cloudinary check - after DB, before routes
 	if os.Getenv("CLOUDINARY_CLOUD_NAME") != "" {
-		log.Println("✅ Cloudinary configured:", os.Getenv("CLOUDINARY_CLOUD_NAME"))
+		log.Println("Cloudinary configured:", os.Getenv("CLOUDINARY_CLOUD_NAME"))
 	} else {
-		log.Println("⚠️  Cloudinary not configured — photo uploads will fail")
+		log.Println("Warning: Cloudinary not configured - photo uploads will fail")
 	}
 
 	router := routes.RegisterRoutes(db)
@@ -86,6 +106,6 @@ func main() {
 	// Wrap router with CORS middleware
 	handlerWithCORS := corsMiddleware(router)
 
-	log.Println("🚀 Server running on http://localhost:3001")
+	log.Println("Server running on http://localhost:3001")
 	log.Fatal(http.ListenAndServe(":3001", handlerWithCORS))
 }
