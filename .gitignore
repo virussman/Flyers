@@ -1,5 +1,15 @@
+# Secrets
+.env
+frontend/.env
 backend/.env
 backend/run-local.sh
+
+# Data dumps - never commit these
+*.sql
+!database/seeds/development.sql
+!database/migrations/*.sql
+
+# Build artifacts
 node_modules/
 dist/
 *.log
