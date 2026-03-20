@@ -13,7 +13,7 @@ type contextKey string
 
 const UserIDKey contextKey = "user_id"
 const UserRoleKey contextKey = "user_role"
-const UserPhoneKey contextKey = "user_phone"
+const UserEmailKey contextKey = "user_email"
 
 func getJWTSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
@@ -26,14 +26,14 @@ func getJWTSecret() []byte {
 // RequireAuth — blocks unauthenticated requests
 func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, role, phone := extractClaims(r)
+		userID, role, email := extractClaims(r)  // FIXED: changed phone → email
 		if userID == 0 {
 			http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
 			return
 		}
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, UserRoleKey, role)
-		ctx = context.WithValue(ctx, UserPhoneKey, phone)
+		ctx = context.WithValue(ctx, UserEmailKey, email)
 		next(w, r.WithContext(ctx))
 	}
 }
@@ -41,10 +41,10 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 // OptionalAuth — attaches user info if token present, continues either way
 func OptionalAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		userID, role, phone := extractClaims(r)
+		userID, role, email := extractClaims(r)  // FIXED: changed phone → email
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, UserRoleKey, role)
-		ctx = context.WithValue(ctx, UserPhoneKey, phone)
+		ctx = context.WithValue(ctx, UserEmailKey, email)
 		next(w, r.WithContext(ctx))
 	}
 }
@@ -79,8 +79,8 @@ func extractClaims(r *http.Request) (int64, string, string) {
 	}
 	userID, _ := claims["user_id"].(float64)
 	role, _ := claims["role"].(string)
-	phone, _ := claims["phone"].(string)
-	return int64(userID), role, phone
+	email, _ := claims["email"].(string)
+	return int64(userID), role, email  // FIXED: return email instead of phone
 }
 
 // GetUserID helper for handlers

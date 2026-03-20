@@ -31,15 +31,10 @@ func RegisterRoutes(db *sql.DB) *http.ServeMux {
 	mux.HandleFunc("/health", handlers.HealthCheck)
 
 	// ── Auth ─────────────────────────────────────────────
-	mux.HandleFunc("/auth/send-otp", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/auth/google", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions { w.WriteHeader(http.StatusNoContent); return }
 		if r.Method != http.MethodPost { http.Error(w, "Method not allowed", 405); return }
-		authHandler.SendOTP(w, r)
-	})
-	mux.HandleFunc("/auth/verify-otp", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions { w.WriteHeader(http.StatusNoContent); return }
-		if r.Method != http.MethodPost { http.Error(w, "Method not allowed", 405); return }
-		authHandler.VerifyOTP(w, r)
+		authHandler.GoogleLogin(w, r)
 	})
 	mux.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions { w.WriteHeader(http.StatusNoContent); return }

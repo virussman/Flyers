@@ -101,3 +101,52 @@ func (r *UserRepository) VerifyOTP(phone, code string) (bool, error) {
 	r.DB.Exec(`UPDATE otps SET used = TRUE WHERE id = $1`, id)
 	return true, nil
 }
+
+// FindOrCreateByGoogle finds or creates a user by Google ID
+func (r *UserRepository) FindOrCreateByGoogle(googleID, email, name string) (*models.User, error) {
+	user := &models.User{}
+
+	// Try find by google_id first
+	err := r.DB.QueryRow(`
+		SELECT id, COALESCE(phone,''), name, COALESCE(email,''), role, is_verified, created_at, updated_at
+		FROM users WHERE google_id = $1`, googleID).
+		Scan(&user.ID, &user.Phone, &user.Name, &user.Email,
+			&user.Role, &user.IsVerified, &user.CreatedAt, &user.UpdatedAt)
+
+	if err == nil {
+		return user, nil // Found by google_id
+	}
+	if err != sql.ErrNoRows {
+		return nil, err // Real database error
+	}
+
+	// Try find by email (user exists but linking Google for first time)
+	err = r.DB.QueryRow(`
+		SELECT id, COALESCE(phone,''), name, COALESCE(email,''), role, is_verified, created_at, updated_at
+		FROM users WHERE email = $1`, email).
+		Scan(&user.ID, &user.Phone, &user.Name, &user.Email,
+			&user.Role, &user.IsVerified, &user.CreatedAt, &user.UpdatedAt)
+
+	if err == nil {
+		// Update google_id for existing user
+		_, updateErr := r.DB.Exec(`UPDATE users SET google_id = $1 WHERE id = $2`, googleID, user.ID)
+		if updateErr != nil {
+			return nil, updateErr
+		}
+		return user, nil
+	}
+	if err != sql.ErrNoRows {
+		return nil, err // Real database error
+	}
+
+	// Create new user (no existing user found by google_id or email)
+	err = r.DB.QueryRow(`
+		INSERT INTO users (google_id, email, name, phone, role, is_verified, created_at, updated_at)
+		VALUES ($1, $2, $3, NULL, 'user', true, NOW(), NOW())
+		RETURNING id, COALESCE(phone,''), name, COALESCE(email,''), role, is_verified, created_at, updated_at`,
+		googleID, email, name).
+		Scan(&user.ID, &user.Phone, &user.Name, &user.Email,
+			&user.Role, &user.IsVerified, &user.CreatedAt, &user.UpdatedAt)
+
+	return user, err
+}
