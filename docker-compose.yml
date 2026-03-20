@@ -39,7 +39,10 @@ services:
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_GOOGLE_CLIENT_ID: 141184215812-g6at9aas51ih8lii2ldcou65p9fh7h4u.apps.googleusercontent.com
     container_name: flyers_frontend
     restart: always
     depends_on:
